@@ -9,7 +9,7 @@
 /coverage
 
 # production
-/build
+# /build  -- committed for PythonAnywhere deployment
 
 # misc
 .DS_Store

@@ -13,7 +13,7 @@ backend/media/
 
 # Node / React
 node_modules/
-frontend/build/
+# frontend/build/ is intentionally committed for PythonAnywhere deployment
 frontend/.env.local
 frontend/.env.production
 frontend/.env.*.local
@@ -30,3 +30,4 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+.claude/

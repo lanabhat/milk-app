@@ -43,10 +43,13 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'milk_management.urls'
 
+REACT_BUILD_DIR = BASE_DIR / '../frontend/build'
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # React's index.html lives here
+        'DIRS': [REACT_BUILD_DIR],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -92,6 +95,8 @@ USE_TZ        = True
 # ── Static files ──────────────────────────────────────────────────────────────
 STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# Include the React build's static folder so collectstatic picks it up
+STATICFILES_DIRS = [REACT_BUILD_DIR / 'static'] if (REACT_BUILD_DIR / 'static').exists() else []
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// In production (PythonAnywhere) API is same origin — leave REACT_APP_API_URL blank.
+// In development set it to http://localhost:8000
+const API = process.env.REACT_APP_API_URL || '';
 
 const ITEM_META = {
   'Nandini Toned Milk 1L':      { img: '/images/toned-milk-1l.jpg',      accent: '#1d4ed8', tag: '1L · Pasteurised' },
