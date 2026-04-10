@@ -15,7 +15,6 @@ backend/media/
 node_modules/
 # frontend/build/ is intentionally committed for PythonAnywhere deployment
 frontend/.env.local
-frontend/.env.production
 frontend/.env.*.local
 
 # OS
