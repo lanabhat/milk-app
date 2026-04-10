@@ -73,6 +73,53 @@ class Advance(models.Model):
         ordering = ['-date', '-created_at']
 
 
+class LpgConfig(models.Model):
+    """One row per user — stores LPG preferences and cylinder stock."""
+    user                = models.OneToOneField(User, on_delete=models.CASCADE, related_name='lpg_config')
+    waiting_days        = models.PositiveIntegerField(default=21)
+    total_cylinders     = models.PositiveIntegerField(default=1)
+    filled_cylinders    = models.PositiveIntegerField(default=1)
+    empty_cylinders     = models.PositiveIntegerField(default=0)
+    liters_per_cylinder = models.FloatField(default=14.2)
+    updated_at          = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.email} — {self.waiting_days}d waiting"
+
+
+class LpgBooking(models.Model):
+    user            = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lpg_bookings')
+    booking_date    = models.DateField()
+    delivered_date  = models.DateField(null=True, blank=True)
+    price           = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    notes           = models.CharField(max_length=255, blank=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-booking_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} — booked {self.booking_date}"
+
+
+class LpgUsage(models.Model):
+    """Tracks when a cylinder is actually opened and used in the kitchen."""
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lpg_usages')
+    booking    = models.ForeignKey(LpgBooking, on_delete=models.SET_NULL, null=True, blank=True, related_name='usages')
+    start_date = models.DateField()
+    end_date   = models.DateField(null=True, blank=True)
+    price      = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    notes      = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-start_date', '-created_at']
+
+    def __str__(self):
+        end = self.end_date or 'ongoing'
+        return f"{self.user.email} — {self.start_date} → {end}"
+
+
 class SpecialRequest(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='special_requests')
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
