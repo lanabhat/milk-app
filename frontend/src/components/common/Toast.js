@@ -6,8 +6,8 @@ export default function Toast({ toast }) {
   return (
     <div style={{
       ...s.toast,
-      backgroundColor: toast.type === 'error' ? '#fef2f2' : '#f0fdf4',
-      color: toast.type === 'error' ? '#dc2626' : '#16a34a',
+      backgroundColor: toast.type === 'error' ? 'var(--danger-bg)' : 'var(--success-bg)',
+      color: toast.type === 'error' ? 'var(--danger)' : 'var(--success)',
     }}>
       {toast.msg}
     </div>
