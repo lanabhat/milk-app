@@ -1,7 +1,7 @@
 {
-  "short_name": "Milk Tracker",
-  "name": "Milk Tracker",
-  "description": "Track your daily milk deliveries and payments",
+  "short_name": "MELP",
+  "name": "Easy home",
+  "description": "Easy Home management",
   "icons": [
     {
       "src": "favicon.ico",
