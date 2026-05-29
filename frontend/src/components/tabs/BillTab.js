@@ -2,12 +2,15 @@ import React, { useState, useRef } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 export default function BillTab({ advances, showToast }) {
   const [billData, setBillData] = useState(null);
   const [billLoading, setBillLoading] = useState(false);
   const [billAdvId, setBillAdvId] = useState('');
   const [billAdvOverride, setBillAdvOverride] = useState('');
+  const [sharingType, setSharingType] = useState(null);
   const billRef = useRef();
 
   const sortedAdvances = [...advances].sort((a, b) =>
@@ -113,6 +116,48 @@ export default function BillTab({ advances, showToast }) {
     win.print();
   };
 
+  const handleShare = async (type) => {
+    if (!billRef.current) return;
+    setSharingType(type);
+    try {
+      const canvas = await html2canvas(billRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      if (type === 'image') {
+        canvas.toBlob(async (blob) => {
+          const file = new File([blob], 'milk-paper-bill.png', { type: 'image/png' });
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Milk & Paper Bill' });
+          } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'milk-paper-bill.png'; a.click();
+            URL.revokeObjectURL(url);
+          }
+          setSharingType(null);
+        }, 'image/png');
+      } else {
+        const imgData = canvas.toDataURL('image/png');
+        const pxW = canvas.width / 2;
+        const pxH = canvas.height / 2;
+        const pdf = new jsPDF({ unit: 'px', format: [pxW, pxH], orientation: pxH > pxW ? 'portrait' : 'landscape' });
+        pdf.addImage(imgData, 'PNG', 0, 0, pxW, pxH);
+        const blob = pdf.output('blob');
+        const file = new File([blob], 'milk-paper-bill.pdf', { type: 'application/pdf' });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Milk & Paper Bill' });
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'milk-paper-bill.pdf'; a.click();
+          URL.revokeObjectURL(url);
+        }
+        setSharingType(null);
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') showToast('Could not share bill', 'error');
+      setSharingType(null);
+    }
+  };
+
   return (
     <div style={s.section}>
       <h3 style={s.sectionTitle}>Generate Bill</h3>
@@ -141,6 +186,16 @@ export default function BillTab({ advances, showToast }) {
             {billLoading ? 'Generating…' : '🧾 Generate Bill'}
           </button>
           {billData && <button onClick={handlePrint} style={{ ...s.primaryBtn, backgroundColor: '#16a34a' }}>🖨 Print</button>}
+          {billData && (
+            <button onClick={() => handleShare('image')} disabled={!!sharingType} title="Share as Image" style={{ ...s.primaryBtn, backgroundColor: '#0369a1' }}>
+              {sharingType === 'image' ? '…' : '📷 Image'}
+            </button>
+          )}
+          {billData && (
+            <button onClick={() => handleShare('pdf')} disabled={!!sharingType} title="Share as PDF" style={{ ...s.primaryBtn, backgroundColor: '#7e22ce' }}>
+              {sharingType === 'pdf' ? '…' : '📄 PDF'}
+            </button>
+          )}
         </div>
       </div>
 

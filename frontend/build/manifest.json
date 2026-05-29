@@ -1,7 +1,7 @@
 {
-  "short_name": "MELP",
-  "name": "Easy home",
-  "description": "Easy Home management",
+  "short_name": "myManeAI",
+  "name": "MyManeAI Manager",
+  "description": "Track expenses, health and other",
   "icons": [
     {
       "src": "favicon.ico",

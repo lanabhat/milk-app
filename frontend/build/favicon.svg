@@ -1,20 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
-  <!-- Background for PWA Icon -->
-  <rect width="100%" height="100%" fill="black" />
-  
-  <g fill="white" transform="translate(200, 200)">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="1000"><metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/"><rdf:Description><dc:creator>RealFaviconGenerator</dc:creator><dc:source>https://realfavicongenerator.net</dc:source></rdf:Description></rdf:RDF></metadata><g clip-path="url(#SvgjsClipPath1061)"><rect width="1000" height="1000" fill="#ffffff"></rect><g transform="matrix(2.5,0,0,2.5,0,0)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400"><rect width="100%" height="100%" fill="black"></rect><g fill="white" transform="translate(200, 200)">
     <!-- Mortar Bowl Body -->
-    <path d="M -120 -40 Q -120 70 0 70 Q 120 70 120 -40 L -120 -40 Z" />
+    <path d="M -120 -40 Q -120 70 0 70 Q 120 70 120 -40 L -120 -40 Z"></path>
     
     <!-- Mortar Base -->
-    <path d="M -50 70 L 50 70 Q 60 85 0 85 Q -60 85 -50 70 Z" />
+    <path d="M -50 70 L 50 70 Q 60 85 0 85 Q -60 85 -50 70 Z"></path>
     
     <!-- Pestle (The grinding tool) -->
     <g transform="rotate(-35)">
-        <rect x="-15" y="-140" width="35" height="110" rx="17" />
+        <rect x="-15" y="-140" width="35" height="110" rx="17"></rect>
     </g>
     
     <!-- "MELP" Text using a clean, monospace-style font -->
     <text x="0" y="25" font-family="Courier New, monospace" font-weight="900" font-size="45" text-anchor="middle" fill="black">MELP</text>
-  </g>
-</svg>
+  </g></svg></g></g><defs><clipPath id="SvgjsClipPath1061"><rect width="1000" height="1000" x="0" y="0" rx="500" ry="500"></rect></clipPath></defs></svg>

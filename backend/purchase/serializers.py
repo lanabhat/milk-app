@@ -6,6 +6,9 @@ from .models import (
     LpgConfig, LpgBooking, LpgUsage, Medicine, StockTransaction, Patient,
     MedicinePurchase, MedicinePurchaseItem, ConsultingRecord,
     HealthExpense, VitalReading,
+    Vehicle, OdometerReading, FuelLog, ServiceCenter, ServiceRecord, ServicePart,
+    PuccRecord, InsurancePolicy, InsuranceClaim, TyrePressureLog, OilChangeLog,
+    AccessorySpend, TripLog, ExtendedWarranty, PartReplacement,
 )
 
 
@@ -24,7 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
 class ItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = Item
-        fields = ['id', 'name', 'price', 'unit', 'category']
+        fields = ['id', 'name', 'price', 'unit', 'category', 'visible', 'position']
 
 
 class PurchaseSerializer(serializers.ModelSerializer):
@@ -284,3 +287,258 @@ class VitalReadingSerializer(serializers.ModelSerializer):
         if not (has_bp or has_pulse or has_sugar):
             raise serializers.ValidationError('At least one vital (BP, pulse, or blood sugar) must be provided.')
         return attrs
+
+
+# ── Vehicle Fleet Serializers ─────────────────────────────────────────────────
+
+class VehicleSerializer(serializers.ModelSerializer):
+    days_until_pucc_expiry      = serializers.SerializerMethodField()
+    days_until_insurance_expiry = serializers.SerializerMethodField()
+    days_until_next_service     = serializers.SerializerMethodField()
+    days_until_oil_change       = serializers.SerializerMethodField()
+    days_until_warranty_expiry  = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Vehicle
+        fields = [
+            'id', 'make', 'model', 'year', 'registration_no', 'color', 'vin_number',
+            'fuel_type', 'vehicle_type', 'purchase_date', 'image_url',
+            'current_odometer', 'is_active', 'notes', 'created_at',
+            'days_until_pucc_expiry', 'days_until_insurance_expiry',
+            'days_until_next_service', 'days_until_oil_change', 'days_until_warranty_expiry',
+        ]
+        read_only_fields = ['created_at', 'days_until_pucc_expiry',
+                            'days_until_insurance_expiry', 'days_until_next_service',
+                            'days_until_oil_change', 'days_until_warranty_expiry']
+
+    def _days_until(self, date_val):
+        if not date_val:
+            return None
+        from django.utils import timezone
+        delta = date_val - timezone.now().date()
+        return delta.days
+
+    def get_days_until_pucc_expiry(self, obj):
+        latest = obj.pucc_records.order_by('-expiry_date').first()
+        return self._days_until(latest.expiry_date) if latest else None
+
+    def get_days_until_insurance_expiry(self, obj):
+        latest = obj.insurance_policies.order_by('-end_date').first()
+        return self._days_until(latest.end_date) if latest else None
+
+    def get_days_until_next_service(self, obj):
+        latest = obj.service_records.filter(next_service_date__isnull=False).order_by('-date').first()
+        return self._days_until(latest.next_service_date) if latest else None
+
+    def get_days_until_oil_change(self, obj):
+        latest = obj.oil_changes.filter(next_change_date__isnull=False).order_by('-date').first()
+        return self._days_until(latest.next_change_date) if latest else None
+
+    def get_days_until_warranty_expiry(self, obj):
+        latest = obj.extended_warranties.order_by('-end_date').first()
+        return self._days_until(latest.end_date) if latest else None
+
+
+class OdometerReadingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = OdometerReading
+        fields = ['id', 'vehicle', 'reading', 'date', 'notes', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class FuelLogSerializer(serializers.ModelSerializer):
+    mileage = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = FuelLog
+        fields = [
+            'id', 'vehicle', 'date', 'fuel_amount', 'price_per_litre',
+            'total_cost', 'odometer', 'full_tank', 'fuel_station', 'notes',
+            'created_at', 'mileage',
+        ]
+        read_only_fields = ['created_at', 'mileage']
+
+    def get_mileage(self, obj):
+        if not obj.full_tank:
+            return None
+        prev = FuelLog.objects.filter(
+            vehicle=obj.vehicle, full_tank=True, odometer__lt=obj.odometer
+        ).order_by('-odometer').first()
+        if prev and prev.odometer and obj.fuel_amount:
+            km = obj.odometer - prev.odometer
+            return round(km / obj.fuel_amount, 2)
+        return None
+
+
+class ServiceCenterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = ServiceCenter
+        fields = ['id', 'name', 'address', 'phone', 'notes', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class ServicePartSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = ServicePart
+        fields = ['id', 'part_name', 'part_number', 'manufacturer', 'quantity', 'unit_cost', 'total_cost']
+
+
+class ServiceRecordSerializer(serializers.ModelSerializer):
+    parts              = ServicePartSerializer(many=True, required=False)
+    service_center_name = serializers.CharField(source='service_center.name', read_only=True, allow_null=True)
+
+    class Meta:
+        model  = ServiceRecord
+        fields = [
+            'id', 'vehicle', 'service_center', 'service_center_name', 'date',
+            'service_type', 'odometer', 'description', 'labour_cost',
+            'parts_cost', 'total_cost', 'next_service_date', 'next_service_km',
+            'notes', 'parts', 'created_at',
+        ]
+        read_only_fields = ['created_at', 'service_center_name']
+
+    def create(self, validated_data):
+        parts_data = validated_data.pop('parts', [])
+        record = ServiceRecord.objects.create(**validated_data)
+        parts_total = 0
+        for p in parts_data:
+            part = ServicePart.objects.create(service_record=record, **p)
+            parts_total += part.total_cost
+        if parts_data:
+            record.parts_cost = parts_total
+            record.total_cost = record.labour_cost + parts_total
+            record.save(update_fields=['parts_cost', 'total_cost'])
+        return record
+
+    def update(self, instance, validated_data):
+        parts_data = validated_data.pop('parts', None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if parts_data is not None:
+            instance.parts.all().delete()
+            parts_total = 0
+            for p in parts_data:
+                part = ServicePart.objects.create(service_record=instance, **p)
+                parts_total += part.total_cost
+            instance.parts_cost = parts_total
+            instance.total_cost = instance.labour_cost + parts_total
+            instance.save(update_fields=['parts_cost', 'total_cost'])
+        return instance
+
+
+class PuccRecordSerializer(serializers.ModelSerializer):
+    days_until_expiry = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = PuccRecord
+        fields = ['id', 'vehicle', 'issue_date', 'expiry_date', 'certificate_no',
+                  'test_center', 'cost', 'notes', 'created_at', 'days_until_expiry']
+        read_only_fields = ['created_at', 'days_until_expiry']
+
+    def get_days_until_expiry(self, obj):
+        from django.utils import timezone
+        return (obj.expiry_date - timezone.now().date()).days
+
+
+class InsurancePolicySerializer(serializers.ModelSerializer):
+    days_until_expiry = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = InsurancePolicy
+        fields = [
+            'id', 'vehicle', 'provider', 'policy_number', 'policy_type',
+            'start_date', 'end_date', 'premium', 'insured_value',
+            'agent_name', 'agent_phone', 'notes', 'created_at', 'days_until_expiry',
+        ]
+        read_only_fields = ['created_at', 'days_until_expiry']
+
+    def get_days_until_expiry(self, obj):
+        from django.utils import timezone
+        return (obj.end_date - timezone.now().date()).days
+
+
+class InsuranceClaimSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = InsuranceClaim
+        fields = [
+            'id', 'policy', 'vehicle', 'claim_date', 'incident_date',
+            'description', 'claimed_amount', 'approved_amount',
+            'settlement_date', 'status', 'notes', 'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+
+class TyrePressureLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = TyrePressureLog
+        fields = ['id', 'vehicle', 'date', 'front_left', 'front_right',
+                  'rear_left', 'rear_right', 'spare', 'notes', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class OilChangeLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = OilChangeLog
+        fields = [
+            'id', 'vehicle', 'date', 'odometer', 'oil_brand', 'oil_grade',
+            'oil_amount', 'cost', 'next_change_date', 'next_change_km',
+            'notes', 'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+
+class AccessorySpendSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = AccessorySpend
+        fields = ['id', 'vehicle', 'date', 'item_name', 'category', 'cost',
+                  'vendor', 'notes', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class TripLogSerializer(serializers.ModelSerializer):
+    computed_distance = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = TripLog
+        fields = [
+            'id', 'vehicle', 'trip_date', 'title', 'from_location', 'to_location',
+            'start_odometer', 'end_odometer', 'distance_km', 'purpose',
+            'image_url', 'notes', 'is_draft', 'created_at', 'updated_at',
+            'computed_distance',
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'computed_distance']
+
+    def get_computed_distance(self, obj):
+        if obj.distance_km is not None:
+            return obj.distance_km
+        if obj.start_odometer is not None and obj.end_odometer is not None:
+            return round(obj.end_odometer - obj.start_odometer, 1)
+        return None
+
+
+class ExtendedWarrantySerializer(serializers.ModelSerializer):
+    days_until_expiry = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ExtendedWarranty
+        fields = [
+            'id', 'vehicle', 'provider', 'contract_number', 'start_date', 'end_date',
+            'coverage_description', 'max_claim_amount', 'contact_phone', 'cost',
+            'notes', 'created_at', 'days_until_expiry',
+        ]
+        read_only_fields = ['created_at', 'days_until_expiry']
+
+    def get_days_until_expiry(self, obj):
+        from django.utils import timezone
+        return (obj.end_date - timezone.now().date()).days
+
+
+class PartReplacementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = PartReplacement
+        fields = [
+            'id', 'vehicle', 'date', 'part_name', 'part_number', 'manufacturer',
+            'cost', 'vendor', 'odometer', 'notes', 'created_at',
+        ]
+        read_only_fields = ['created_at']

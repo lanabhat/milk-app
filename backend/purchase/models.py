@@ -28,6 +28,8 @@ class Item(models.Model):
     price    = models.FloatField()
     unit     = models.CharField(max_length=50)
     category = models.CharField(max_length=50, choices=ITEM_CATEGORIES, default='other', blank=True)
+    visible  = models.BooleanField(default=True)
+    position = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -35,7 +37,7 @@ class Item(models.Model):
         return f"{self.name} - {self.price} Rs per {self.unit}"
 
     class Meta:
-        ordering = ['name']
+        ordering = ['position', 'name']
 
 
 class Purchase(models.Model):
@@ -331,6 +333,19 @@ class HealthExpense(models.Model):
 
 # ── Vital Readings ────────────────────────────────────────────────────────────
 
+class ReminderSkip(models.Model):
+    """Records dates the user explicitly chose to skip the purchase reminder."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reminder_skips')
+    date = models.DateField()
+
+    class Meta:
+        unique_together = ('user', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.user.email} — skipped {self.date}"
+
+
 class VitalReading(models.Model):
     SUGAR_TYPE_CHOICES = [
         ('fasting', 'Fasting'), ('post_meal', 'Post Meal (2hr)'),
@@ -355,3 +370,315 @@ class VitalReading(models.Model):
 
     def __str__(self):
         return f"{self.patient.name} vitals @ {self.recorded_at}"
+
+
+# ── Vehicle Fleet Management ──────────────────────────────────────────────────
+
+class Vehicle(models.Model):
+    FUEL_CHOICES = [
+        ('petrol', 'Petrol'), ('diesel', 'Diesel'), ('cng', 'CNG'),
+        ('electric', 'Electric'), ('hybrid', 'Hybrid'),
+    ]
+    TYPE_CHOICES = [
+        ('car', 'Car'), ('bike', 'Bike'), ('scooter', 'Scooter'),
+        ('truck', 'Truck'), ('other', 'Other'),
+    ]
+    user             = models.ForeignKey(User, on_delete=models.CASCADE, related_name='vehicles')
+    make             = models.CharField(max_length=100)
+    model            = models.CharField(max_length=100)
+    year             = models.PositiveIntegerField(null=True, blank=True)
+    registration_no  = models.CharField(max_length=50)
+    color            = models.CharField(max_length=50, blank=True)
+    vin_number       = models.CharField(max_length=50, blank=True)
+    fuel_type        = models.CharField(max_length=20, choices=FUEL_CHOICES, default='petrol')
+    vehicle_type     = models.CharField(max_length=20, choices=TYPE_CHOICES, default='car')
+    purchase_date    = models.DateField(null=True, blank=True)
+    image_url        = models.CharField(max_length=500, blank=True)
+    current_odometer = models.FloatField(default=0)
+    is_active        = models.BooleanField(default=True)
+    notes            = models.TextField(blank=True)
+    created_at       = models.DateTimeField(auto_now_add=True)
+    updated_at       = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} — {self.year} {self.make} {self.model} ({self.registration_no})"
+
+
+class OdometerReading(models.Model):
+    vehicle    = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='odometer_readings')
+    reading    = models.FloatField()
+    date       = models.DateField()
+    notes      = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.reading} km on {self.date}"
+
+
+class FuelLog(models.Model):
+    vehicle         = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='fuel_logs')
+    date            = models.DateField()
+    fuel_amount     = models.FloatField()
+    price_per_litre = models.FloatField()
+    total_cost      = models.FloatField()
+    odometer        = models.FloatField()
+    full_tank       = models.BooleanField(default=True)
+    fuel_station    = models.CharField(max_length=100, blank=True)
+    notes           = models.CharField(max_length=200, blank=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.fuel_amount}L on {self.date}"
+
+
+class ServiceCenter(models.Model):
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='service_centers')
+    name       = models.CharField(max_length=100)
+    address    = models.TextField(blank=True)
+    phone      = models.CharField(max_length=30, blank=True)
+    notes      = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.user.email} — {self.name}"
+
+
+class ServiceRecord(models.Model):
+    TYPE_CHOICES = [
+        ('routine', 'Routine Service'), ('repair', 'Repair'),
+        ('accidental', 'Accidental'), ('recall', 'Recall'), ('other', 'Other'),
+    ]
+    vehicle           = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='service_records')
+    service_center    = models.ForeignKey(ServiceCenter, on_delete=models.SET_NULL, null=True, blank=True, related_name='service_records')
+    date              = models.DateField()
+    service_type      = models.CharField(max_length=20, choices=TYPE_CHOICES, default='routine')
+    odometer          = models.FloatField(null=True, blank=True)
+    description       = models.TextField(blank=True)
+    labour_cost       = models.FloatField(default=0)
+    parts_cost        = models.FloatField(default=0)
+    total_cost        = models.FloatField(default=0)
+    next_service_date = models.DateField(null=True, blank=True)
+    next_service_km   = models.FloatField(null=True, blank=True)
+    notes             = models.TextField(blank=True)
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.service_type} on {self.date}"
+
+
+class ServicePart(models.Model):
+    service_record = models.ForeignKey(ServiceRecord, on_delete=models.CASCADE, related_name='parts')
+    part_name      = models.CharField(max_length=100)
+    part_number    = models.CharField(max_length=50, blank=True)
+    manufacturer   = models.CharField(max_length=100, blank=True)
+    quantity       = models.FloatField(default=1)
+    unit_cost      = models.FloatField()
+    total_cost     = models.FloatField()
+
+    def __str__(self):
+        return f"{self.part_name} × {self.quantity} @ ₹{self.unit_cost}"
+
+
+class PuccRecord(models.Model):
+    vehicle        = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='pucc_records')
+    issue_date     = models.DateField()
+    expiry_date    = models.DateField()
+    certificate_no = models.CharField(max_length=50, blank=True)
+    test_center    = models.CharField(max_length=100, blank=True)
+    cost           = models.FloatField(default=0)
+    notes          = models.CharField(max_length=200, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-expiry_date']
+
+    def __str__(self):
+        return f"{self.vehicle} PUCC — expires {self.expiry_date}"
+
+
+class InsurancePolicy(models.Model):
+    TYPE_CHOICES = [
+        ('comprehensive', 'Comprehensive'), ('third_party', 'Third Party'),
+        ('own_damage', 'Own Damage'),
+    ]
+    vehicle       = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='insurance_policies')
+    provider      = models.CharField(max_length=100)
+    policy_number = models.CharField(max_length=100)
+    policy_type   = models.CharField(max_length=20, choices=TYPE_CHOICES, default='comprehensive')
+    start_date    = models.DateField()
+    end_date      = models.DateField()
+    premium       = models.FloatField()
+    insured_value = models.FloatField(null=True, blank=True)
+    agent_name    = models.CharField(max_length=100, blank=True)
+    agent_phone   = models.CharField(max_length=30, blank=True)
+    notes         = models.TextField(blank=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-end_date']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.provider} ({self.policy_number})"
+
+
+class InsuranceClaim(models.Model):
+    STATUS_CHOICES = [
+        ('filed', 'Filed'), ('under_review', 'Under Review'),
+        ('approved', 'Approved'), ('rejected', 'Rejected'), ('settled', 'Settled'),
+    ]
+    policy          = models.ForeignKey(InsurancePolicy, on_delete=models.CASCADE, related_name='claims')
+    vehicle         = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='insurance_claims')
+    claim_date      = models.DateField()
+    incident_date   = models.DateField()
+    description     = models.TextField()
+    claimed_amount  = models.FloatField()
+    approved_amount = models.FloatField(null=True, blank=True)
+    settlement_date = models.DateField(null=True, blank=True)
+    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='filed')
+    notes           = models.TextField(blank=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-claim_date']
+
+    def __str__(self):
+        return f"{self.vehicle} claim ₹{self.claimed_amount} — {self.status}"
+
+
+class TyrePressureLog(models.Model):
+    vehicle     = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='tyre_pressure_logs')
+    date        = models.DateField()
+    front_left  = models.FloatField(null=True, blank=True)
+    front_right = models.FloatField(null=True, blank=True)
+    rear_left   = models.FloatField(null=True, blank=True)
+    rear_right  = models.FloatField(null=True, blank=True)
+    spare       = models.FloatField(null=True, blank=True)
+    notes       = models.CharField(max_length=200, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.vehicle} — tyre pressure on {self.date}"
+
+
+class OilChangeLog(models.Model):
+    vehicle          = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='oil_changes')
+    date             = models.DateField()
+    odometer         = models.FloatField()
+    oil_brand        = models.CharField(max_length=100, blank=True)
+    oil_grade        = models.CharField(max_length=50, blank=True)
+    oil_amount       = models.FloatField(null=True, blank=True)
+    cost             = models.FloatField(default=0)
+    next_change_date = models.DateField(null=True, blank=True)
+    next_change_km   = models.FloatField(null=True, blank=True)
+    notes            = models.CharField(max_length=200, blank=True)
+    created_at       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.vehicle} — oil change on {self.date}"
+
+
+class AccessorySpend(models.Model):
+    CAT_CHOICES = [
+        ('electrical', 'Electrical'), ('mechanical', 'Mechanical'),
+        ('cosmetic', 'Cosmetic'), ('safety', 'Safety'), ('other', 'Other'),
+    ]
+    vehicle   = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='accessory_spends')
+    date      = models.DateField()
+    item_name = models.CharField(max_length=100)
+    category  = models.CharField(max_length=20, choices=CAT_CHOICES, default='other')
+    cost      = models.FloatField()
+    vendor    = models.CharField(max_length=100, blank=True)
+    notes     = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.item_name} ₹{self.cost}"
+
+
+class TripLog(models.Model):
+    vehicle        = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='trips')
+    trip_date      = models.DateField()
+    title          = models.CharField(max_length=100)
+    from_location  = models.CharField(max_length=100, blank=True)
+    to_location    = models.CharField(max_length=100, blank=True)
+    start_odometer = models.FloatField(null=True, blank=True)
+    end_odometer   = models.FloatField(null=True, blank=True)
+    distance_km    = models.FloatField(null=True, blank=True)
+    purpose        = models.CharField(max_length=100, blank=True)
+    image_url      = models.CharField(max_length=500, blank=True)
+    notes          = models.TextField(blank=True)
+    is_draft       = models.BooleanField(default=False)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-trip_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.title} on {self.trip_date}"
+
+
+class ExtendedWarranty(models.Model):
+    vehicle              = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='extended_warranties')
+    provider             = models.CharField(max_length=100)
+    contract_number      = models.CharField(max_length=100, blank=True)
+    start_date           = models.DateField()
+    end_date             = models.DateField()
+    coverage_description = models.TextField(blank=True)
+    max_claim_amount     = models.FloatField(null=True, blank=True)
+    contact_phone        = models.CharField(max_length=30, blank=True)
+    cost                 = models.FloatField(default=0)
+    notes                = models.TextField(blank=True)
+    created_at           = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-end_date']
+
+    def __str__(self):
+        return f"{self.vehicle} — warranty by {self.provider} until {self.end_date}"
+
+
+class PartReplacement(models.Model):
+    vehicle      = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='part_replacements')
+    date         = models.DateField()
+    part_name    = models.CharField(max_length=100)
+    part_number  = models.CharField(max_length=50, blank=True)
+    manufacturer = models.CharField(max_length=100, blank=True)
+    cost         = models.FloatField()
+    vendor       = models.CharField(max_length=100, blank=True)
+    odometer     = models.FloatField(null=True, blank=True)
+    notes        = models.CharField(max_length=200, blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.vehicle} — {self.part_name} replaced on {self.date}"

@@ -16,10 +16,11 @@ function greet() {
   return 'Good evening';
 }
 
-export default function HomeTab({ balance, advances, purchases, lpgStatus, medicines, onNavigate }) {
+export default function HomeTab({ balance, advances, purchases, lpgStatus, medicines, vehicles, onNavigate }) {
   const today = todayStr();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const [upcoming, setUpcoming] = useState([]);
+  const [skippedDates, setSkippedDates] = useState(new Set());
 
   useEffect(() => {
     const headers = getAuthHeaders();
@@ -27,6 +28,10 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
     fetch(`${API}/api/consulting-records/?upcoming=true&limit=5`, { headers })
       .then(r => r.ok ? r.json() : [])
       .then(data => setUpcoming(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    fetch(`${API}/api/reminder-skips/`, { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setSkippedDates(new Set(Array.isArray(data) ? data : [])))
       .catch(() => {});
   }, []);
 
@@ -55,6 +60,22 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
       alerts.push({ type: 'warn', icon: '🔵', text: `LPG booking available in ${lpgStatus.days_remaining} day${lpgStatus.days_remaining === 1 ? '' : 's'}` });
     }
   }
+  if (vehicles && vehicles.length > 0) {
+    vehicles.filter(v => v.is_active).forEach(v => {
+      const reg = v.registration_no;
+      const label = `${v.make} ${v.model} (${reg})`;
+      if (v.days_until_pucc_expiry !== null && v.days_until_pucc_expiry <= 30)
+        alerts.push({ type: v.days_until_pucc_expiry <= 0 ? 'danger' : 'warn', icon: '📋', text: `${label} PUCC ${v.days_until_pucc_expiry <= 0 ? 'EXPIRED' : `expires in ${v.days_until_pucc_expiry}d`}` });
+      if (v.days_until_insurance_expiry !== null && v.days_until_insurance_expiry <= 30)
+        alerts.push({ type: v.days_until_insurance_expiry <= 0 ? 'danger' : 'warn', icon: '🛡️', text: `${label} insurance ${v.days_until_insurance_expiry <= 0 ? 'EXPIRED' : `expires in ${v.days_until_insurance_expiry}d`}` });
+      if (v.days_until_next_service !== null && v.days_until_next_service <= 14)
+        alerts.push({ type: v.days_until_next_service <= 0 ? 'danger' : 'warn', icon: '🔧', text: `${label} service ${v.days_until_next_service <= 0 ? 'OVERDUE' : `due in ${v.days_until_next_service}d`}` });
+      if (v.days_until_oil_change !== null && v.days_until_oil_change <= 14)
+        alerts.push({ type: v.days_until_oil_change <= 0 ? 'danger' : 'warn', icon: '🔄', text: `${label} oil change ${v.days_until_oil_change <= 0 ? 'OVERDUE' : `due in ${v.days_until_oil_change}d`}` });
+      if (v.days_until_warranty_expiry !== null && v.days_until_warranty_expiry <= 30 && v.days_until_warranty_expiry >= 0)
+        alerts.push({ type: 'warn', icon: '🛡️', text: `${label} extended warranty expires in ${v.days_until_warranty_expiry}d` });
+    });
+  }
   if (medicines && medicines.length > 0) {
     medicines.forEach(med => {
       if (med.alert_level === 'critical') {
@@ -65,6 +86,32 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
       }
     });
   }
+
+  // ── Purchase reminders (last 7 days with no purchases, not yet skipped) ──
+  const reminderDates = (() => {
+    const result = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      const hasPurchase = purchases.some(p => p.date === ds);
+      if (!hasPurchase && !skippedDates.has(ds)) result.push(ds);
+    }
+    return result;
+  })();
+
+  const skipReminder = async (dateStr) => {
+    const headers = getAuthHeaders();
+    if (!headers) return;
+    try {
+      await fetch(`${API}/api/reminder-skips/`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: dateStr }),
+      });
+      setSkippedDates(prev => new Set([...prev, dateStr]));
+    } catch {}
+  };
 
   // ── Today's purchases ──
   const todayPurchases = purchases.filter(p => p.date === today);
@@ -112,6 +159,33 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
           ))}
         </div>
       )}
+
+      {/* Purchase reminders */}
+      {reminderDates.map(d => {
+        const isToday = d === today;
+        const label = isToday
+          ? 'Today'
+          : new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+        return (
+          <div key={d} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '12px 14px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8', marginBottom: 8 }}>
+              🥛 No purchases logged for {label}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => { sessionStorage.setItem('purchaseDateHint', d); onNavigate?.('purchase', 'milk'); }}
+                style={{ flex: 1, padding: '7px 12px', background: '#1d4ed8', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Add Purchases
+              </button>
+              <button
+                onClick={() => skipReminder(d)}
+                style={{ padding: '7px 12px', background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                Skip This Day
+              </button>
+            </div>
+          </div>
+        );
+      })}
 
       {/* Stats row */}
       <div className="stat-grid">

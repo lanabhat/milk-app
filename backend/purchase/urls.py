@@ -5,7 +5,11 @@ from .views import (
     BillViewSet, BillingSessionViewSet, LpgViewSet, MedicineViewSet, PatientViewSet,
     MedicineDiaryViewSet,
     MedicinePurchaseViewSet, ConsultingRecordViewSet,
-    HealthExpenseViewSet, VitalReadingViewSet,
+    HealthExpenseViewSet, VitalReadingViewSet, ReminderSkipViewSet,
+    VehicleViewSet, OdometerViewSet, FuelLogViewSet, ServiceCenterViewSet,
+    ServiceRecordViewSet, PuccViewSet, InsurancePolicyViewSet, InsuranceClaimViewSet,
+    TyrePressureViewSet, OilChangeViewSet, AccessorySpendViewSet,
+    TripLogViewSet, ExtendedWarrantyViewSet, PartReplacementViewSet,
     login_view, logout_view, current_user, health_check
 )
 
@@ -24,6 +28,21 @@ router.register(r'medicine-purchases', MedicinePurchaseViewSet, basename='medici
 router.register(r'consulting-records', ConsultingRecordViewSet, basename='consulting-record')
 router.register(r'health-expenses',    HealthExpenseViewSet,    basename='health-expense')
 router.register(r'vital-readings',     VitalReadingViewSet,     basename='vital-reading')
+router.register(r'reminder-skips',       ReminderSkipViewSet,       basename='reminder-skip')
+router.register(r'vehicles',             VehicleViewSet,            basename='vehicle')
+router.register(r'odometer-readings',    OdometerViewSet,           basename='odometer-reading')
+router.register(r'fuel-logs',            FuelLogViewSet,            basename='fuel-log')
+router.register(r'service-centers',      ServiceCenterViewSet,      basename='service-center')
+router.register(r'service-records',      ServiceRecordViewSet,      basename='service-record')
+router.register(r'pucc-records',         PuccViewSet,               basename='pucc-record')
+router.register(r'insurance-policies',   InsurancePolicyViewSet,    basename='insurance-policy')
+router.register(r'insurance-claims',     InsuranceClaimViewSet,     basename='insurance-claim')
+router.register(r'tyre-pressure',        TyrePressureViewSet,       basename='tyre-pressure')
+router.register(r'oil-changes',          OilChangeViewSet,          basename='oil-change')
+router.register(r'accessory-spends',     AccessorySpendViewSet,     basename='accessory-spend')
+router.register(r'trips',                TripLogViewSet,            basename='trip')
+router.register(r'extended-warranties',  ExtendedWarrantyViewSet,   basename='extended-warranty')
+router.register(r'part-replacements',    PartReplacementViewSet,    basename='part-replacement')
 
 urlpatterns = [
     path('', include(router.urls)),

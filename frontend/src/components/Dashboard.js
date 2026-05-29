@@ -20,6 +20,13 @@ import MedicinePurchaseTab from './tabs/MedicinePurchaseTab';
 import ConsultingTab from './tabs/ConsultingTab';
 import VitalsTab from './tabs/VitalsTab';
 import HealthExpensesTab from './tabs/HealthExpensesTab';
+import CatalogTab from './tabs/CatalogTab';
+import VehicleListTab from './tabs/VehicleListTab';
+import VehicleFuelTab from './tabs/VehicleFuelTab';
+import VehicleServiceTab from './tabs/VehicleServiceTab';
+import VehicleDocsTab from './tabs/VehicleDocsTab';
+import VehicleTripsTab from './tabs/VehicleTripsTab';
+import VehicleMaintTab from './tabs/VehicleMaintTab';
 
 const NAV = [
   {
@@ -38,6 +45,7 @@ const NAV = [
       { id: 'history',   label: 'History',   icon: '📋' },
       { id: 'bill',      label: 'Bill',      icon: '🧾' },
       { id: 'trends',    label: 'Trends',    icon: '📈' },
+      { id: 'catalog',   label: 'Catalog',   icon: '⚙️' },
     ],
   },
   {
@@ -64,6 +72,19 @@ const NAV = [
       { id: 'med-expenses', label: 'Expenses',  icon: '📊' },
     ],
   },
+  {
+    id: 'vehicles',
+    label: 'Vehicles',
+    icon: '🚗',
+    tabs: [
+      { id: 'vehicle-list',    label: 'Fleet',       icon: '🚗' },
+      { id: 'vehicle-fuel',    label: 'Fuel',        icon: '⛽' },
+      { id: 'vehicle-service', label: 'Service',     icon: '🔧' },
+      { id: 'vehicle-docs',    label: 'Docs',        icon: '📋' },
+      { id: 'vehicle-trips',   label: 'Trips',       icon: '🗺️' },
+      { id: 'vehicle-maint',   label: 'Maintenance', icon: '⚙️' },
+    ],
+  },
 ];
 
 export default function Dashboard() {
@@ -74,6 +95,7 @@ export default function Dashboard() {
   const [lpgStatus,  setLpgStatus]  = useState(null);
   const [medicines,  setMedicines]  = useState([]);
   const [patients,   setPatients]   = useState([]);
+  const [vehicles,   setVehicles]   = useState([]);
   const [tab,        setTab]        = useState('home');
   const [section,    setSection]    = useState('home');
   const [sidebarOpen,      setSidebarOpen]      = useState(false);
@@ -119,15 +141,14 @@ export default function Dashboard() {
       const itemData = ir.ok ? await ir.json() : [];
       const pData    = pr.ok ? await pr.json() : [];
       const aData    = ar.ok ? await ar.json() : [];
-      const counts   = {};
-      pData.forEach(p => { counts[p.item] = (counts[p.item] || 0) + 1; });
-      itemData.sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0));
       setItems(itemData);
       setPurchases(pData);
       setAdvances(aData);
       if (br.ok) setBalance(await br.json());
       if (mr.ok) setMedicines(await mr.json());
       if (patr.ok) setPatients(await patr.json());
+      const vr = await fetch(`${API}/api/vehicles/`, { headers });
+      if (vr.ok) setVehicles(await vr.json());
     } catch (e) { console.error(e); }
   }, []);
 
@@ -270,6 +291,7 @@ export default function Dashboard() {
                 purchases={purchases}
                 lpgStatus={lpgStatus}
                 medicines={medicines}
+                vehicles={vehicles}
                 onNavigate={navigate}
               />
             )}
@@ -309,6 +331,31 @@ export default function Dashboard() {
                 purchases={purchases}
                 items={items}
               />
+            )}
+            {tab === 'catalog' && (
+              <CatalogTab
+                items={items}
+                showToast={showToast}
+                onSaved={fetchData}
+              />
+            )}
+            {tab === 'vehicle-list' && (
+              <VehicleListTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'vehicle-fuel' && (
+              <VehicleFuelTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'vehicle-service' && (
+              <VehicleServiceTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'vehicle-docs' && (
+              <VehicleDocsTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'vehicle-trips' && (
+              <VehicleTripsTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'vehicle-maint' && (
+              <VehicleMaintTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
             )}
             {tab === 'lpg' && (
               <LpgTab showToast={showToast} />

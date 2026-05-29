@@ -4,9 +4,21 @@ import { todayStr, fmt, fmtShort, fmtD } from '../../utils/date';
 import { ITEM_META } from '../../constants/itemMeta';
 import { styles as s } from '../../styles/dashboard';
 
+function ItemThumb({ name, category, style }) {
+  const meta = ITEM_META[name];
+  if (meta?.img) return <img src={meta.img} alt={name} style={style} onError={e => { e.target.style.display = 'none'; }} />;
+  const icon = category === 'milk' ? '🥛' : category === 'newspaper' ? '📰' : '📦';
+  const bg   = category === 'milk' ? '#e0f2fe' : category === 'newspaper' ? '#fce7f3' : '#f1f5f9';
+  return <div style={{ ...style, background: bg, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{icon}</div>;
+}
+
 export default function PurchaseTab({ items, advances, showToast, onSaved }) {
   const [cart, setCart] = useState({});
-  const [purchaseDate, setPurchaseDate] = useState(todayStr());
+  const [purchaseDate, setPurchaseDate] = useState(() => {
+    const hint = sessionStorage.getItem('purchaseDateHint');
+    if (hint) { sessionStorage.removeItem('purchaseDateHint'); return hint; }
+    return todayStr();
+  });
   const [cartAdvance, setCartAdvance] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -22,6 +34,10 @@ export default function PurchaseTab({ items, advances, showToast, onSaved }) {
     if (n === 0) delete u[id];
     return u;
   });
+  const visibleItems = items.filter(i => i.visible !== false);
+  const hiddenItems  = items.filter(i => i.visible === false);
+  const [showHidden, setShowHidden] = useState(false);
+
   const cartTotal = items.reduce((s, i) => s + (cart[i.id] || 0) * i.price, 0);
   const cartCount = Object.values(cart).reduce((s, v) => s + v, 0);
 
@@ -87,16 +103,15 @@ export default function PurchaseTab({ items, advances, showToast, onSaved }) {
         {/* Products */}
         <div style={s.productsPanel}>
           <div style={s.panelTitle}>Available Products</div>
-          {items.map(item => {
-            const meta = ITEM_META[item.name] || { img: '', accent: '#475569', tag: '' };
+          {visibleItems.map(item => {
+            const meta = ITEM_META[item.name] || { accent: '#475569', tag: '' };
             return (
               <div key={item.id} draggable onDragStart={e => onDragStart(e, item.id)}
                 style={{ ...s.productRow, borderLeft: `4px solid ${meta.accent}` }}>
-                <img src={meta.img} alt={item.name} style={s.productImg}
-                  onError={e => { e.target.style.display = 'none'; }} />
+                <ItemThumb name={item.name} category={item.category} style={s.productImg} />
                 <div style={s.productInfo}>
                   <div style={s.productName}>{item.name}</div>
-                  <div style={s.productTag}>{meta.tag}</div>
+                  <div style={s.productTag}>{meta.tag || item.unit}</div>
                   <div style={{ ...s.productPrice, color: meta.accent }}>₹{item.price}/unit</div>
                 </div>
                 <button onClick={() => addToCart(item.id)} style={{ ...s.addBtn, backgroundColor: meta.accent }}>
@@ -105,6 +120,29 @@ export default function PurchaseTab({ items, advances, showToast, onSaved }) {
               </div>
             );
           })}
+          {hiddenItems.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <button onClick={() => setShowHidden(v => !v)}
+                style={{ width: '100%', padding: '6px 10px', background: 'transparent', border: '1px dashed #cbd5e1', borderRadius: 8, fontSize: 12, color: '#94a3b8', cursor: 'pointer', textAlign: 'left' }}>
+                {showHidden ? '▾' : '▸'} Hidden products ({hiddenItems.length})
+              </button>
+              {showHidden && hiddenItems.map(item => {
+                const meta = ITEM_META[item.name] || { accent: '#94a3b8', tag: '' };
+                return (
+                  <div key={item.id} style={{ ...s.productRow, borderLeft: `4px solid #cbd5e1`, opacity: 0.7 }}>
+                    <ItemThumb name={item.name} category={item.category} style={s.productImg} />
+                    <div style={s.productInfo}>
+                      <div style={s.productName}>{item.name}</div>
+                      <div style={{ ...s.productPrice, color: '#94a3b8' }}>₹{item.price}/unit</div>
+                    </div>
+                    <button onClick={() => addToCart(item.id)} style={{ ...s.addBtn, backgroundColor: '#94a3b8' }}>
+                      + Add
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Cart */}

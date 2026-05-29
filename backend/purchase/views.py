@@ -12,7 +12,10 @@ from .models import (
     Item, Purchase, Advance, SpecialRequest, BillingSession,
     LpgConfig, LpgBooking, LpgUsage, Medicine, StockTransaction, Patient,
     MedicinePurchase, MedicinePurchaseItem, ConsultingRecord,
-    HealthExpense, VitalReading,
+    HealthExpense, VitalReading, ReminderSkip,
+    Vehicle, OdometerReading, FuelLog, ServiceCenter, ServiceRecord, ServicePart,
+    PuccRecord, InsurancePolicy, InsuranceClaim, TyrePressureLog, OilChangeLog,
+    AccessorySpend, TripLog, ExtendedWarranty, PartReplacement,
 )
 from .serializers import (
     UserSerializer, ItemSerializer, PurchaseSerializer,
@@ -21,6 +24,11 @@ from .serializers import (
     MedicineSerializer, StockTransactionSerializer, PatientSerializer,
     MedicinePurchaseSerializer, ConsultingRecordSerializer,
     HealthExpenseSerializer, VitalReadingSerializer,
+    VehicleSerializer, OdometerReadingSerializer, FuelLogSerializer,
+    ServiceCenterSerializer, ServiceRecordSerializer,
+    PuccRecordSerializer, InsurancePolicySerializer, InsuranceClaimSerializer,
+    TyrePressureLogSerializer, OilChangeLogSerializer, AccessorySpendSerializer,
+    TripLogSerializer, ExtendedWarrantySerializer, PartReplacementSerializer,
 )
 from django.db.models import Prefetch
 
@@ -139,6 +147,12 @@ class ItemViewSet(viewsets.ModelViewSet):
     queryset = Item.objects.all()
     serializer_class = ItemSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def reorder(self, request):
+        for entry in request.data:
+            Item.objects.filter(pk=entry['id']).update(position=entry['position'])
+        return Response({'ok': True})
 
 
 class PurchaseViewSet(viewsets.ModelViewSet):
@@ -1016,3 +1030,236 @@ class VitalReadingViewSet(viewsets.ModelViewSet):
     def trends(self, request):
         qs = self.get_queryset().order_by('recorded_at')
         return Response(VitalReadingSerializer(qs, many=True).data)
+
+
+class ReminderSkipViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        """Return list of skipped date strings for the current user."""
+        dates = ReminderSkip.objects.filter(user=request.user).values_list('date', flat=True)
+        return Response([str(d) for d in dates])
+
+    def create(self, request):
+        """Record a skip for a given date (idempotent)."""
+        date_str = request.data.get('date')
+        if not date_str:
+            return Response({'error': 'date is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            d = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'error': 'Invalid date format, use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+        ReminderSkip.objects.get_or_create(user=request.user, date=d)
+        return Response({'date': date_str}, status=status.HTTP_201_CREATED)
+
+
+# ── Vehicle Fleet ViewSets ────────────────────────────────────────────────────
+
+class VehicleViewSet(viewsets.ModelViewSet):
+    serializer_class   = VehicleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Vehicle.objects.filter(user=self.request.user).prefetch_related(
+            'pucc_records', 'insurance_policies', 'service_records', 'oil_changes',
+            'extended_warranties',
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def summary(self, request, pk=None):
+        v = self.get_object()
+        last_service = v.service_records.first()
+        last_fuel    = v.fuel_logs.first()
+        latest_pucc  = v.pucc_records.order_by('-expiry_date').first()
+        latest_ins   = v.insurance_policies.order_by('-end_date').first()
+        latest_oil   = v.oil_changes.filter(next_change_date__isnull=False).order_by('-date').first()
+        total_fuel_cost    = v.fuel_logs.aggregate(t=Sum('total_cost'))['t'] or 0
+        total_service_cost = v.service_records.aggregate(t=Sum('total_cost'))['t'] or 0
+        trips_count        = v.trips.count()
+        return Response({
+            'current_odometer':   v.current_odometer,
+            'last_service_date':  str(last_service.date) if last_service else None,
+            'last_fuel_date':     str(last_fuel.date) if last_fuel else None,
+            'pucc_expiry':        str(latest_pucc.expiry_date) if latest_pucc else None,
+            'insurance_expiry':   str(latest_ins.end_date) if latest_ins else None,
+            'oil_change_due':     str(latest_oil.next_change_date) if latest_oil else None,
+            'trips_count':        trips_count,
+            'total_fuel_cost':    total_fuel_cost,
+            'total_service_cost': total_service_cost,
+        })
+
+
+class OdometerViewSet(viewsets.ModelViewSet):
+    serializer_class   = OdometerReadingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = OdometerReading.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+    def perform_create(self, serializer):
+        reading = serializer.save()
+        Vehicle.objects.filter(pk=reading.vehicle_id, current_odometer__lt=reading.reading).update(
+            current_odometer=reading.reading
+        )
+
+
+class FuelLogViewSet(viewsets.ModelViewSet):
+    serializer_class   = FuelLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = FuelLog.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+    def perform_create(self, serializer):
+        log = serializer.save()
+        Vehicle.objects.filter(pk=log.vehicle_id, current_odometer__lt=log.odometer).update(
+            current_odometer=log.odometer
+        )
+
+
+class ServiceCenterViewSet(viewsets.ModelViewSet):
+    serializer_class   = ServiceCenterSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return ServiceCenter.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class ServiceRecordViewSet(viewsets.ModelViewSet):
+    serializer_class   = ServiceRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ServiceRecord.objects.filter(vehicle__user=self.request.user).prefetch_related('parts')
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class PuccViewSet(viewsets.ModelViewSet):
+    serializer_class   = PuccRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = PuccRecord.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class InsurancePolicyViewSet(viewsets.ModelViewSet):
+    serializer_class   = InsurancePolicySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = InsurancePolicy.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class InsuranceClaimViewSet(viewsets.ModelViewSet):
+    serializer_class   = InsuranceClaimSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = InsuranceClaim.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class TyrePressureViewSet(viewsets.ModelViewSet):
+    serializer_class   = TyrePressureLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = TyrePressureLog.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class OilChangeViewSet(viewsets.ModelViewSet):
+    serializer_class   = OilChangeLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = OilChangeLog.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+    def perform_create(self, serializer):
+        log = serializer.save()
+        Vehicle.objects.filter(pk=log.vehicle_id, current_odometer__lt=log.odometer).update(
+            current_odometer=log.odometer
+        )
+
+
+class AccessorySpendViewSet(viewsets.ModelViewSet):
+    serializer_class   = AccessorySpendSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = AccessorySpend.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class TripLogViewSet(viewsets.ModelViewSet):
+    serializer_class   = TripLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = TripLog.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class ExtendedWarrantyViewSet(viewsets.ModelViewSet):
+    serializer_class   = ExtendedWarrantySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ExtendedWarranty.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs
+
+
+class PartReplacementViewSet(viewsets.ModelViewSet):
+    serializer_class   = PartReplacementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = PartReplacement.objects.filter(vehicle__user=self.request.user)
+        vid = self.request.query_params.get('vehicle_id')
+        if vid:
+            qs = qs.filter(vehicle_id=vid)
+        return qs

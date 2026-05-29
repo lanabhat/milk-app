@@ -46,6 +46,22 @@ export default function TrendsTab({ purchases, items }) {
   const milkAvgPerDay = milkDays > 0 ? milkQtyTotal / milkDays : 0;
   const milkSpend = catTotals['milk'] || 0;
 
+  // Milk-specific time buckets (reuse same keys as trendBuckets)
+  const milkLitreBuckets = trendBuckets.map(([key]) => {
+    const litres = milkPurchases
+      .filter(p => trendPeriod === 'all' ? p.date.startsWith(key) : p.date === key)
+      .reduce((s, p) => s + milkLitres(p.item_name, p.quantity), 0);
+    return [key, litres];
+  });
+  const milkPriceBuckets = trendBuckets.map(([key]) => {
+    const price = milkPurchases
+      .filter(p => trendPeriod === 'all' ? p.date.startsWith(key) : p.date === key)
+      .reduce((s, p) => s + parseFloat(p.total), 0);
+    return [key, price];
+  });
+  const maxMilkLitre = Math.max(...milkLitreBuckets.map(([, v]) => v), 0.1);
+  const maxMilkPrice = Math.max(...milkPriceBuckets.map(([, v]) => v), 1);
+
   const grandTotal = trendFiltered.reduce((s, p) => s + parseFloat(p.total), 0);
   const activeDays = trendBuckets.filter(([, v]) => v > 0).length;
 
@@ -204,6 +220,93 @@ export default function TrendsTab({ purchases, items }) {
             </div>
           </div>
         )}
+
+      {/* Milk trends */}
+      {milkPurchases.length > 0 && (
+        <>
+          <h3 style={s.sectionTitle}>🥛 Milk — Liters Purchased
+            <span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', marginLeft: 8 }}>
+              {trendPeriod === 'all' ? 'by month' : 'by day'}
+            </span>
+          </h3>
+          <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 8px', overflowX: 'auto', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: trendPeriod === 'all' ? 6 : 3, height: 120, minWidth: Math.max(300, milkLitreBuckets.length * (trendPeriod === 'all' ? 36 : 14)) }}>
+              {milkLitreBuckets.map(([d, v]) => {
+                const label = trendPeriod === 'all' ? d.slice(0, 7) : d.slice(5);
+                const showLabel = trendPeriod === 'all' || milkLitreBuckets.length <= 14 || d.slice(8) === '01' || d.slice(8) === '15';
+                return (
+                  <div key={d} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: trendPeriod === 'all' ? 28 : 8 }} title={`${d}: ${v.toFixed(1)} L`}>
+                    {v > 0 && trendPeriod === 'all' && <div style={{ fontSize: 9, color: '#0369a1' }}>{v.toFixed(1)}L</div>}
+                    <div style={{ width: '100%', backgroundColor: v > 0 ? '#0369a1' : '#f1f5f9', borderRadius: '3px 3px 0 0', height: Math.max(2, (v / maxMilkLitre) * 90) }} />
+                    {showLabel && <div style={{ fontSize: 8, color: '#94a3b8', whiteSpace: 'nowrap' }}>{label}</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, paddingLeft: 4, fontSize: 10, color: '#64748b' }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#0369a1' }} />
+              Liters of milk purchased
+            </div>
+          </div>
+
+          <h3 style={s.sectionTitle}>🥛 Milk — Spend (₹)
+            <span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8', marginLeft: 8 }}>
+              {trendPeriod === 'all' ? 'by month' : 'by day'}
+            </span>
+          </h3>
+          <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 8px', overflowX: 'auto', marginBottom: 20 }}>
+            {(() => {
+              const n = milkPriceBuckets.length;
+              const chartW = Math.max(300, n * (trendPeriod === 'all' ? 42 : 14));
+              const chartH = 90;
+              const pts = milkPriceBuckets.map(([, v], i) => ({
+                x: n < 2 ? chartW / 2 : (i / (n - 1)) * chartW,
+                y: chartH - Math.max(2, (v / maxMilkPrice) * chartH),
+                v,
+              }));
+              const polyline = pts.map(p => `${p.x},${p.y}`).join(' ');
+              return (
+                <div style={{ overflowX: 'auto' }}>
+                  <svg width={chartW} height={chartH + 20} style={{ display: 'block', overflow: 'visible' }}>
+                    {/* Zero baseline */}
+                    <line x1={0} y1={chartH} x2={chartW} y2={chartH} stroke="#e2e8f0" strokeWidth={1} />
+                    {/* Line */}
+                    <polyline points={polyline} fill="none" stroke="#1d4ed8" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                    {/* Area fill */}
+                    <polyline
+                      points={`0,${chartH} ${polyline} ${chartW},${chartH}`}
+                      fill="#1d4ed8" fillOpacity={0.08}
+                      stroke="none"
+                    />
+                    {/* Dots */}
+                    {pts.map((p, i) => {
+                      const d = milkPriceBuckets[i][0];
+                      const label = trendPeriod === 'all' ? d.slice(0, 7) : d.slice(5);
+                      const showLabel = trendPeriod === 'all' || n <= 14 || d.slice(8) === '01' || d.slice(8) === '15';
+                      return (
+                        <g key={d}>
+                          {p.v > 0 && (
+                            <circle cx={p.x} cy={p.y} r={3} fill="#1d4ed8" stroke="white" strokeWidth={1.5}>
+                              <title>{`${d}: ₹${fmt(p.v)}`}</title>
+                            </circle>
+                          )}
+                          {showLabel && (
+                            <text x={p.x} y={chartH + 14} textAnchor="middle" fontSize={8} fill="#94a3b8">{label}</text>
+                          )}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+              );
+            })()}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, paddingLeft: 4, fontSize: 10, color: '#64748b' }}>
+              <div style={{ width: 10, height: 2, backgroundColor: '#1d4ed8', borderRadius: 1 }} />
+              Milk spend per {trendPeriod === 'all' ? 'month' : 'day'}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
