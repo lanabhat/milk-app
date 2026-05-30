@@ -10,6 +10,9 @@ from .views import (
     ServiceRecordViewSet, PuccViewSet, InsurancePolicyViewSet, InsuranceClaimViewSet,
     TyrePressureViewSet, OilChangeViewSet, AccessorySpendViewSet,
     TripLogViewSet, ExtendedWarrantyViewSet, PartReplacementViewSet,
+    FamilyMemberViewSet, DiaryEntryViewSet, EntryNoteViewSet, EntryExpenseViewSet,
+    HomeApplianceViewSet, ApplianceServiceViewSet, ElectricityBillViewSet,
+    SpendCategoryViewSet, HomeSpendViewSet, EducationExpenseViewSet,
     login_view, logout_view, current_user, health_check
 )
 
@@ -43,6 +46,16 @@ router.register(r'accessory-spends',     AccessorySpendViewSet,     basename='ac
 router.register(r'trips',                TripLogViewSet,            basename='trip')
 router.register(r'extended-warranties',  ExtendedWarrantyViewSet,   basename='extended-warranty')
 router.register(r'part-replacements',    PartReplacementViewSet,    basename='part-replacement')
+router.register(r'family-members',       FamilyMemberViewSet,       basename='family-member')
+router.register(r'diary-entries',        DiaryEntryViewSet,         basename='diary-entry')
+router.register(r'entry-notes',          EntryNoteViewSet,          basename='entry-note')
+router.register(r'entry-expenses',       EntryExpenseViewSet,       basename='entry-expense')
+router.register(r'home-appliances',      HomeApplianceViewSet,      basename='home-appliance')
+router.register(r'appliance-services',   ApplianceServiceViewSet,   basename='appliance-service')
+router.register(r'electricity-bills',    ElectricityBillViewSet,    basename='electricity-bill')
+router.register(r'spend-categories',     SpendCategoryViewSet,      basename='spend-category')
+router.register(r'home-spends',          HomeSpendViewSet,          basename='home-spend')
+router.register(r'education-expenses',   EducationExpenseViewSet,   basename='education-expense')
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -27,6 +27,14 @@ import VehicleServiceTab from './tabs/VehicleServiceTab';
 import VehicleDocsTab from './tabs/VehicleDocsTab';
 import VehicleTripsTab from './tabs/VehicleTripsTab';
 import VehicleMaintTab from './tabs/VehicleMaintTab';
+import JournalFamilyTab from './tabs/JournalFamilyTab';
+import JournalTodoTab from './tabs/JournalTodoTab';
+import JournalDiaryTab from './tabs/JournalDiaryTab';
+import HomeAppliancesTab from './tabs/HomeAppliancesTab';
+import HomeServiceTab from './tabs/HomeServiceTab';
+import HomeElectricityTab from './tabs/HomeElectricityTab';
+import HomeSpendsTab from './tabs/HomeSpendsTab';
+import HomeEducationTab from './tabs/HomeEducationTab';
 
 const NAV = [
   {
@@ -73,6 +81,28 @@ const NAV = [
     ],
   },
   {
+    id: 'journal',
+    label: 'Journal',
+    icon: '📔',
+    tabs: [
+      { id: 'journal-todo',   label: 'Todos',  icon: '✅' },
+      { id: 'journal-diary',  label: 'Diary',  icon: '📓' },
+      { id: 'journal-family', label: 'Family', icon: '👨‍👩‍👧' },
+    ],
+  },
+  {
+    id: 'home-mgmt',
+    label: 'Home',
+    icon: '🏡',
+    tabs: [
+      { id: 'home-appliances', label: 'Appliances', icon: '🔌' },
+      { id: 'home-service',    label: 'Service',    icon: '🔧' },
+      { id: 'home-electric',   label: 'Electricity',icon: '⚡' },
+      { id: 'home-spends',     label: 'Spends',     icon: '🛒' },
+      { id: 'home-education',  label: 'Education',  icon: '📚' },
+    ],
+  },
+  {
     id: 'vehicles',
     label: 'Vehicles',
     icon: '🚗',
@@ -95,7 +125,11 @@ export default function Dashboard() {
   const [lpgStatus,  setLpgStatus]  = useState(null);
   const [medicines,  setMedicines]  = useState([]);
   const [patients,   setPatients]   = useState([]);
-  const [vehicles,   setVehicles]   = useState([]);
+  const [vehicles,             setVehicles]             = useState([]);
+  const [selectedVehicleId,    setSelectedVehicleId]    = useState('');
+  const [appliances,           setAppliances]           = useState([]);
+  const [selectedApplianceId,  setSelectedApplianceId]  = useState('');
+  const [family,               setFamily]               = useState([]);
   const [tab,        setTab]        = useState('home');
   const [section,    setSection]    = useState('home');
   const [sidebarOpen,      setSidebarOpen]      = useState(false);
@@ -147,8 +181,28 @@ export default function Dashboard() {
       if (br.ok) setBalance(await br.json());
       if (mr.ok) setMedicines(await mr.json());
       if (patr.ok) setPatients(await patr.json());
+      const fr = await fetch(`${API}/api/family-members/`, { headers });
+      if (fr.ok) setFamily(await fr.json());
+      const apr = await fetch(`${API}/api/home-appliances/`, { headers });
+      if (apr.ok) {
+        const aData = await apr.json();
+        setAppliances(aData);
+        setSelectedApplianceId(prev => {
+          if (prev) return prev;
+          const first = aData.find(a => a.is_active);
+          return first ? String(first.id) : '';
+        });
+      }
       const vr = await fetch(`${API}/api/vehicles/`, { headers });
-      if (vr.ok) setVehicles(await vr.json());
+      if (vr.ok) {
+        const vData = await vr.json();
+        setVehicles(vData);
+        setSelectedVehicleId(prev => {
+          if (prev) return prev;
+          const first = vData.find(v => v.is_active);
+          return first ? String(first.id) : '';
+        });
+      }
     } catch (e) { console.error(e); }
   }, []);
 
@@ -283,6 +337,46 @@ export default function Dashboard() {
             />
           )}
 
+          {/* Global appliance selector — shown for home service tab */}
+          {section === 'home-mgmt' && tab === 'home-service' && appliances.filter(a => a.is_active).length > 0 && (
+            <div style={{ padding: '8px 16px 0', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Selected appliance</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 8 }}>
+                {appliances.filter(a => a.is_active).map(a => (
+                  <button key={a.id} onClick={() => setSelectedApplianceId(String(a.id))}
+                    style={{
+                      padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                      background: String(a.id) === selectedApplianceId ? 'var(--accent)' : 'var(--surface)',
+                      color: String(a.id) === selectedApplianceId ? 'white' : 'var(--text-muted)',
+                      boxShadow: String(a.id) === selectedApplianceId ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+                    }}>
+                    {a.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Global vehicle selector — shown for all vehicle sub-tabs except Fleet */}
+          {section === 'vehicles' && tab !== 'vehicle-list' && vehicles.filter(v => v.is_active).length > 0 && (
+            <div style={{ padding: '8px 16px 0', background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Active vehicle</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 8 }}>
+                {vehicles.filter(v => v.is_active).map(v => (
+                  <button key={v.id} onClick={() => setSelectedVehicleId(String(v.id))}
+                    style={{
+                      padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                      background: String(v.id) === selectedVehicleId ? 'var(--accent)' : 'var(--surface)',
+                      color: String(v.id) === selectedVehicleId ? 'white' : 'var(--text-muted)',
+                      boxShadow: String(v.id) === selectedVehicleId ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+                    }}>
+                    {v.make} {v.model} · {v.registration_no}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={s.body}>
             {tab === 'home' && (
               <HomeTab
@@ -292,6 +386,7 @@ export default function Dashboard() {
                 lpgStatus={lpgStatus}
                 medicines={medicines}
                 vehicles={vehicles}
+                appliances={appliances}
                 onNavigate={navigate}
               />
             )}
@@ -340,22 +435,46 @@ export default function Dashboard() {
               />
             )}
             {tab === 'vehicle-list' && (
-              <VehicleListTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+              <VehicleListTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} selectedVehicleId={selectedVehicleId} onSelectVehicle={setSelectedVehicleId} />
             )}
             {tab === 'vehicle-fuel' && (
-              <VehicleFuelTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+              <VehicleFuelTab vehicles={vehicles} selectedVehicleId={selectedVehicleId} showToast={showToast} onSaved={fetchData} />
             )}
             {tab === 'vehicle-service' && (
-              <VehicleServiceTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+              <VehicleServiceTab vehicles={vehicles} selectedVehicleId={selectedVehicleId} showToast={showToast} onSaved={fetchData} />
             )}
             {tab === 'vehicle-docs' && (
-              <VehicleDocsTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+              <VehicleDocsTab vehicles={vehicles} selectedVehicleId={selectedVehicleId} showToast={showToast} onSaved={fetchData} />
             )}
             {tab === 'vehicle-trips' && (
-              <VehicleTripsTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+              <VehicleTripsTab vehicles={vehicles} selectedVehicleId={selectedVehicleId} showToast={showToast} onSaved={fetchData} />
             )}
             {tab === 'vehicle-maint' && (
-              <VehicleMaintTab vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+              <VehicleMaintTab vehicles={vehicles} selectedVehicleId={selectedVehicleId} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'journal-family' && (
+              <JournalFamilyTab family={family} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'journal-todo' && (
+              <JournalTodoTab family={family} vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'journal-diary' && (
+              <JournalDiaryTab family={family} vehicles={vehicles} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'home-appliances' && (
+              <HomeAppliancesTab appliances={appliances} selectedApplianceId={selectedApplianceId} onSelectAppliance={setSelectedApplianceId} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'home-service' && (
+              <HomeServiceTab appliances={appliances} selectedApplianceId={selectedApplianceId} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'home-electric' && (
+              <HomeElectricityTab showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'home-spends' && (
+              <HomeSpendsTab family={family} showToast={showToast} onSaved={fetchData} />
+            )}
+            {tab === 'home-education' && (
+              <HomeEducationTab family={family} showToast={showToast} onSaved={fetchData} />
             )}
             {tab === 'lpg' && (
               <LpgTab showToast={showToast} />

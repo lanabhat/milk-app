@@ -682,3 +682,232 @@ class PartReplacement(models.Model):
 
     def __str__(self):
         return f"{self.vehicle} — {self.part_name} replaced on {self.date}"
+
+
+# ── Journal: Family, Todos & Diary ───────────────────────────────────────────
+
+class FamilyMember(models.Model):
+    RELATION_CHOICES = [
+        ('self', 'Self/Me'), ('spouse', 'Spouse'), ('son', 'Son'),
+        ('daughter', 'Daughter'), ('father', 'Father'), ('mother', 'Mother'),
+        ('sibling', 'Sibling'), ('other', 'Other'),
+    ]
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='family_members')
+    name       = models.CharField(max_length=100)
+    relation   = models.CharField(max_length=20, choices=RELATION_CHOICES, default='other')
+    avatar     = models.CharField(max_length=10, blank=True)
+    is_active  = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['relation', 'name']
+
+    def __str__(self):
+        return f"{self.user.email} — {self.name} ({self.relation})"
+
+
+class DiaryEntry(models.Model):
+    TYPE_CHOICES     = [('note', 'Note/Diary'), ('todo', 'Todo')]
+    PRIORITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
+    CRITICAL_CHOICES = [('minor', 'Minor'), ('normal', 'Normal'), ('critical', 'Critical')]
+    STATUS_CHOICES   = [('open', 'Open'), ('in_progress', 'In Progress'), ('done', 'Done'), ('cancelled', 'Cancelled')]
+
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='diary_entries')
+    entry_type   = models.CharField(max_length=10, choices=TYPE_CHOICES, default='note')
+    title        = models.CharField(max_length=300)
+    content      = models.TextField(blank=True)
+    owner        = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='owned_entries')
+
+    priority     = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium', blank=True)
+    criticality  = models.CharField(max_length=10, choices=CRITICAL_CHOICES, default='normal', blank=True)
+    status       = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    due_date     = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    related_trip = models.ForeignKey('TripLog', on_delete=models.SET_NULL, null=True, blank=True, related_name='diary_entries')
+    tags         = models.CharField(max_length=200, blank=True)
+
+    entry_date   = models.DateField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-entry_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} — [{self.entry_type}] {self.title}"
+
+
+class EntryNote(models.Model):
+    """Follow-up note / comment on a diary entry or todo."""
+    entry      = models.ForeignKey(DiaryEntry, on_delete=models.CASCADE, related_name='notes')
+    content    = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Note on '{self.entry.title}'"
+
+
+class EntryExpense(models.Model):
+    PAYMENT_CHOICES = [('cash', 'Cash'), ('card', 'Card'), ('upi', 'UPI'), ('other', 'Other')]
+    entry          = models.ForeignKey(DiaryEntry, on_delete=models.CASCADE, related_name='expenses')
+    description    = models.CharField(max_length=200)
+    amount         = models.FloatField()
+    date           = models.DateField()
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default='cash')
+    paid_by        = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True)
+    notes          = models.CharField(max_length=200, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"₹{self.amount} — {self.description}"
+
+
+# ── Home Management ───────────────────────────────────────────────────────────
+
+class HomeAppliance(models.Model):
+    CATEGORY_CHOICES = [
+        ('kitchen', 'Kitchen'), ('laundry', 'Laundry'), ('entertainment', 'Entertainment'),
+        ('climate', 'Air/Climate'), ('computing', 'Computing'), ('mobile', 'Mobile/Phone'),
+        ('lighting', 'Lighting'), ('security', 'Security'), ('other', 'Other'),
+    ]
+    user            = models.ForeignKey(User, on_delete=models.CASCADE, related_name='home_appliances')
+    name            = models.CharField(max_length=200)
+    brand           = models.CharField(max_length=100, blank=True)
+    model_number    = models.CharField(max_length=100, blank=True)
+    category        = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
+    purchase_date   = models.DateField(null=True, blank=True)
+    purchase_price  = models.FloatField(null=True, blank=True)
+    warranty_expiry = models.DateField(null=True, blank=True)
+    amc_expiry      = models.DateField(null=True, blank=True)
+    serial_number   = models.CharField(max_length=100, blank=True)
+    location        = models.CharField(max_length=100, blank=True)
+    image_url       = models.CharField(max_length=500, blank=True)
+    notes           = models.TextField(blank=True)
+    is_active       = models.BooleanField(default=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} — {self.name}"
+
+
+class ApplianceService(models.Model):
+    TYPE_CHOICES = [
+        ('routine', 'Routine'), ('repair', 'Repair'), ('amc', 'AMC Service'),
+        ('installation', 'Installation'), ('other', 'Other'),
+    ]
+    appliance         = models.ForeignKey(HomeAppliance, on_delete=models.CASCADE, related_name='services')
+    date              = models.DateField()
+    service_type      = models.CharField(max_length=20, choices=TYPE_CHOICES, default='routine')
+    description       = models.TextField(blank=True)
+    technician        = models.CharField(max_length=100, blank=True)
+    company           = models.CharField(max_length=100, blank=True)
+    cost              = models.FloatField(default=0)
+    next_service_date = models.DateField(null=True, blank=True)
+    bill_url          = models.CharField(max_length=500, blank=True)
+    notes             = models.TextField(blank=True)
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.appliance.name} — {self.service_type} on {self.date}"
+
+
+class ElectricityBill(models.Model):
+    user            = models.ForeignKey(User, on_delete=models.CASCADE, related_name='electricity_bills')
+    bill_date       = models.DateField()
+    from_date       = models.DateField()
+    to_date         = models.DateField()
+    units_consumed  = models.FloatField()
+    amount          = models.FloatField()
+    opening_reading = models.FloatField(null=True, blank=True)
+    closing_reading = models.FloatField(null=True, blank=True)
+    meter_number    = models.CharField(max_length=50, blank=True)
+    paid            = models.BooleanField(default=False)
+    paid_date       = models.DateField(null=True, blank=True)
+    notes           = models.CharField(max_length=200, blank=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-bill_date']
+
+    def __str__(self):
+        return f"{self.user.email} — ₹{self.amount} bill on {self.bill_date}"
+
+
+class SpendCategory(models.Model):
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='spend_categories')
+    name       = models.CharField(max_length=100)
+    icon       = models.CharField(max_length=10, blank=True)
+    color      = models.CharField(max_length=7, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('user', 'name')
+
+    def __str__(self):
+        return f"{self.user.email} — {self.name}"
+
+
+class HomeSpend(models.Model):
+    PAYMENT_CHOICES = [('cash','Cash'),('card','Card'),('upi','UPI'),('bank','Bank Transfer'),('other','Other')]
+    user           = models.ForeignKey(User, on_delete=models.CASCADE, related_name='home_spends')
+    date           = models.DateField()
+    category       = models.ForeignKey(SpendCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='spends')
+    description    = models.CharField(max_length=300)
+    amount         = models.FloatField()
+    store_name     = models.CharField(max_length=100, blank=True)
+    paid_by        = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='home_spends')
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default='cash')
+    notes          = models.CharField(max_length=200, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} — ₹{self.amount} ({self.description})"
+
+
+class EducationExpense(models.Model):
+    CATEGORY_CHOICES = [
+        ('tuition', 'Tuition/School Fee'), ('transport', 'Transport'),
+        ('food', 'Food/Tiffin'), ('books', 'Books/Stationery'),
+        ('uniform', 'Uniform/Shoes'), ('activity', 'Activity/Sports'),
+        ('exam', 'Exam/Test Fee'), ('coaching', 'Coaching/Tuition Class'),
+        ('other', 'Other'),
+    ]
+    PAYMENT_CHOICES = [('cash','Cash'),('card','Card'),('upi','UPI'),('bank','Bank Transfer'),('other','Other')]
+    user           = models.ForeignKey(User, on_delete=models.CASCADE, related_name='education_expenses')
+    family_member  = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='education_expenses')
+    date           = models.DateField()
+    category       = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='tuition')
+    description    = models.CharField(max_length=200)
+    amount         = models.FloatField()
+    institution    = models.CharField(max_length=150, blank=True)
+    academic_year  = models.CharField(max_length=20, blank=True)
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default='cash')
+    notes          = models.CharField(max_length=200, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        name = self.family_member.name if self.family_member else 'unknown'
+        return f"{name} — {self.category} ₹{self.amount}"

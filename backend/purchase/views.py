@@ -16,6 +16,9 @@ from .models import (
     Vehicle, OdometerReading, FuelLog, ServiceCenter, ServiceRecord, ServicePart,
     PuccRecord, InsurancePolicy, InsuranceClaim, TyrePressureLog, OilChangeLog,
     AccessorySpend, TripLog, ExtendedWarranty, PartReplacement,
+    FamilyMember, DiaryEntry, EntryNote, EntryExpense,
+    HomeAppliance, ApplianceService, ElectricityBill,
+    SpendCategory, HomeSpend, EducationExpense,
 )
 from .serializers import (
     UserSerializer, ItemSerializer, PurchaseSerializer,
@@ -29,6 +32,9 @@ from .serializers import (
     PuccRecordSerializer, InsurancePolicySerializer, InsuranceClaimSerializer,
     TyrePressureLogSerializer, OilChangeLogSerializer, AccessorySpendSerializer,
     TripLogSerializer, ExtendedWarrantySerializer, PartReplacementSerializer,
+    FamilyMemberSerializer, DiaryEntrySerializer, EntryNoteSerializer, EntryExpenseSerializer,
+    HomeApplianceSerializer, ApplianceServiceSerializer, ElectricityBillSerializer,
+    SpendCategorySerializer, HomeSpendSerializer, EducationExpenseSerializer,
 )
 from django.db.models import Prefetch
 
@@ -1263,3 +1269,199 @@ class PartReplacementViewSet(viewsets.ModelViewSet):
         if vid:
             qs = qs.filter(vehicle_id=vid)
         return qs
+
+
+# ── Journal ViewSets ──────────────────────────────────────────────────────────
+
+class FamilyMemberViewSet(viewsets.ModelViewSet):
+    serializer_class   = FamilyMemberSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return FamilyMember.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class DiaryEntryViewSet(viewsets.ModelViewSet):
+    serializer_class   = DiaryEntrySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = DiaryEntry.objects.filter(user=self.request.user).prefetch_related('notes', 'expenses')
+        p = self.request.query_params
+        if p.get('entry_type'):
+            qs = qs.filter(entry_type=p['entry_type'])
+        if p.get('status'):
+            qs = qs.filter(status=p['status'])
+        if p.get('owner_id'):
+            qs = qs.filter(owner_id=p['owner_id'])
+        if p.get('priority'):
+            qs = qs.filter(priority=p['priority'])
+        if p.get('criticality'):
+            qs = qs.filter(criticality=p['criticality'])
+        if p.get('date_from'):
+            qs = qs.filter(entry_date__gte=p['date_from'])
+        if p.get('date_to'):
+            qs = qs.filter(entry_date__lte=p['date_to'])
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        from django.utils import timezone
+        entry = self.get_object()
+        entry.status = 'done'
+        entry.completed_at = timezone.now()
+        entry.save(update_fields=['status', 'completed_at'])
+        return Response(DiaryEntrySerializer(entry).data)
+
+    @action(detail=True, methods=['post'])
+    def reopen(self, request, pk=None):
+        entry = self.get_object()
+        entry.status = 'open'
+        entry.completed_at = None
+        entry.save(update_fields=['status', 'completed_at'])
+        return Response(DiaryEntrySerializer(entry).data)
+
+
+class EntryNoteViewSet(viewsets.ModelViewSet):
+    serializer_class   = EntryNoteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = EntryNote.objects.filter(entry__user=self.request.user)
+        eid = self.request.query_params.get('entry_id')
+        if eid:
+            qs = qs.filter(entry_id=eid)
+        return qs
+
+
+class EntryExpenseViewSet(viewsets.ModelViewSet):
+    serializer_class   = EntryExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = EntryExpense.objects.filter(entry__user=self.request.user)
+        eid = self.request.query_params.get('entry_id')
+        if eid:
+            qs = qs.filter(entry_id=eid)
+        return qs
+
+
+# ── Home Management ViewSets ──────────────────────────────────────────────────
+
+SPEND_CATEGORY_DEFAULTS = [
+    ('Groceries', '🛒', '#16a34a'), ('Vegetables', '🥦', '#22c55e'), ('Fruits', '🍎', '#f97316'),
+    ('Dairy', '🥛', '#0369a1'), ('Oil & Cooking', '🫙', '#eab308'), ('Meat / Fish', '🍖', '#dc2626'),
+    ('Snacks', '🍪', '#f59e0b'), ('Cleaning', '🧹', '#06b6d4'), ('Home Maintenance', '🔧', '#64748b'),
+    ('Electricity', '⚡', '#a855f7'), ('Water', '💧', '#3b82f6'), ('Phone Bill', '📱', '#8b5cf6'),
+    ('Internet', '📡', '#0ea5e9'), ('Medical', '💊', '#ef4444'), ('Other', '📦', '#94a3b8'),
+]
+
+
+class HomeApplianceViewSet(viewsets.ModelViewSet):
+    serializer_class   = HomeApplianceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = HomeAppliance.objects.filter(user=self.request.user).prefetch_related('services')
+        cat = self.request.query_params.get('category')
+        if cat:
+            qs = qs.filter(category=cat)
+        active = self.request.query_params.get('is_active')
+        if active is not None:
+            qs = qs.filter(is_active=active.lower() == 'true')
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class ApplianceServiceViewSet(viewsets.ModelViewSet):
+    serializer_class   = ApplianceServiceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ApplianceService.objects.filter(appliance__user=self.request.user)
+        aid = self.request.query_params.get('appliance_id')
+        if aid:
+            qs = qs.filter(appliance_id=aid)
+        return qs
+
+
+class ElectricityBillViewSet(viewsets.ModelViewSet):
+    serializer_class   = ElectricityBillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ElectricityBill.objects.filter(user=self.request.user)
+        year = self.request.query_params.get('year')
+        if year:
+            qs = qs.filter(bill_date__year=year)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class SpendCategoryViewSet(viewsets.ModelViewSet):
+    serializer_class   = SpendCategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return SpendCategory.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        if not qs.exists():
+            SpendCategory.objects.bulk_create([
+                SpendCategory(user=request.user, name=n, icon=i, color=c)
+                for n, i, c in SPEND_CATEGORY_DEFAULTS
+            ], ignore_conflicts=True)
+            qs = self.get_queryset()
+        return Response(self.get_serializer(qs, many=True).data)
+
+
+class HomeSpendViewSet(viewsets.ModelViewSet):
+    serializer_class   = HomeSpendSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = HomeSpend.objects.filter(user=self.request.user).select_related('category', 'paid_by')
+        p = self.request.query_params
+        if p.get('category_id'):
+            qs = qs.filter(category_id=p['category_id'])
+        if p.get('date_from'):
+            qs = qs.filter(date__gte=p['date_from'])
+        if p.get('date_to'):
+            qs = qs.filter(date__lte=p['date_to'])
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class EducationExpenseViewSet(viewsets.ModelViewSet):
+    serializer_class   = EducationExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = EducationExpense.objects.filter(user=self.request.user).select_related('family_member')
+        p = self.request.query_params
+        if p.get('family_member_id'):
+            qs = qs.filter(family_member_id=p['family_member_id'])
+        if p.get('category'):
+            qs = qs.filter(category=p['category'])
+        if p.get('academic_year'):
+            qs = qs.filter(academic_year=p['academic_year'])
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

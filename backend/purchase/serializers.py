@@ -9,6 +9,9 @@ from .models import (
     Vehicle, OdometerReading, FuelLog, ServiceCenter, ServiceRecord, ServicePart,
     PuccRecord, InsurancePolicy, InsuranceClaim, TyrePressureLog, OilChangeLog,
     AccessorySpend, TripLog, ExtendedWarranty, PartReplacement,
+    FamilyMember, DiaryEntry, EntryNote, EntryExpense,
+    HomeAppliance, ApplianceService, ElectricityBill,
+    SpendCategory, HomeSpend, EducationExpense,
 )
 
 
@@ -542,3 +545,160 @@ class PartReplacementSerializer(serializers.ModelSerializer):
             'cost', 'vendor', 'odometer', 'notes', 'created_at',
         ]
         read_only_fields = ['created_at']
+
+
+# ── Journal Serializers ───────────────────────────────────────────────────────
+
+class FamilyMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = FamilyMember
+        fields = ['id', 'name', 'relation', 'avatar', 'is_active', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class EntryNoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = EntryNote
+        fields = ['id', 'entry', 'content', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class EntryExpenseSerializer(serializers.ModelSerializer):
+    paid_by_name = serializers.CharField(source='paid_by.name', read_only=True, allow_null=True)
+
+    class Meta:
+        model  = EntryExpense
+        fields = ['id', 'entry', 'description', 'amount', 'date', 'payment_method',
+                  'paid_by', 'paid_by_name', 'notes', 'created_at']
+        read_only_fields = ['created_at', 'paid_by_name']
+
+
+class DiaryEntrySerializer(serializers.ModelSerializer):
+    notes         = EntryNoteSerializer(many=True, read_only=True)
+    expenses      = EntryExpenseSerializer(many=True, read_only=True)
+    owner_name    = serializers.CharField(source='owner.name', read_only=True, allow_null=True)
+    owner_avatar  = serializers.CharField(source='owner.avatar', read_only=True, allow_null=True)
+    related_trip_title = serializers.CharField(source='related_trip.title', read_only=True, allow_null=True)
+    expense_total = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = DiaryEntry
+        fields = [
+            'id', 'entry_type', 'title', 'content', 'owner', 'owner_name', 'owner_avatar',
+            'priority', 'criticality', 'status', 'due_date', 'completed_at',
+            'related_trip', 'related_trip_title', 'tags',
+            'entry_date', 'created_at', 'updated_at',
+            'notes', 'expenses', 'expense_total',
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'completed_at',
+                            'owner_name', 'owner_avatar', 'related_trip_title', 'expense_total']
+
+    def get_expense_total(self, obj):
+        return sum(e.amount for e in obj.expenses.all())
+
+
+# ── Home Management Serializers ───────────────────────────────────────────────
+
+class HomeApplianceSerializer(serializers.ModelSerializer):
+    days_until_warranty     = serializers.SerializerMethodField()
+    days_until_amc          = serializers.SerializerMethodField()
+    days_until_next_service = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = HomeAppliance
+        fields = [
+            'id', 'name', 'brand', 'model_number', 'category',
+            'purchase_date', 'purchase_price', 'warranty_expiry', 'amc_expiry',
+            'serial_number', 'location', 'image_url', 'notes', 'is_active',
+            'created_at', 'days_until_warranty', 'days_until_amc', 'days_until_next_service',
+        ]
+        read_only_fields = ['created_at', 'days_until_warranty', 'days_until_amc', 'days_until_next_service']
+
+    def _days(self, d):
+        if not d:
+            return None
+        from django.utils import timezone
+        return (d - timezone.now().date()).days
+
+    def get_days_until_warranty(self, obj):
+        return self._days(obj.warranty_expiry)
+
+    def get_days_until_amc(self, obj):
+        return self._days(obj.amc_expiry)
+
+    def get_days_until_next_service(self, obj):
+        latest = obj.services.filter(next_service_date__isnull=False).order_by('-date').first()
+        return self._days(latest.next_service_date) if latest else None
+
+
+class ApplianceServiceSerializer(serializers.ModelSerializer):
+    appliance_name = serializers.CharField(source='appliance.name', read_only=True)
+
+    class Meta:
+        model  = ApplianceService
+        fields = [
+            'id', 'appliance', 'appliance_name', 'date', 'service_type',
+            'description', 'technician', 'company', 'cost',
+            'next_service_date', 'bill_url', 'notes', 'created_at',
+        ]
+        read_only_fields = ['created_at', 'appliance_name']
+
+
+class ElectricityBillSerializer(serializers.ModelSerializer):
+    cost_per_unit = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ElectricityBill
+        fields = [
+            'id', 'bill_date', 'from_date', 'to_date', 'units_consumed', 'amount',
+            'opening_reading', 'closing_reading', 'meter_number',
+            'paid', 'paid_date', 'notes', 'created_at', 'cost_per_unit',
+        ]
+        read_only_fields = ['created_at', 'cost_per_unit']
+
+    def get_cost_per_unit(self, obj):
+        if obj.units_consumed and obj.units_consumed > 0:
+            return round(obj.amount / obj.units_consumed, 2)
+        return None
+
+
+class SpendCategorySerializer(serializers.ModelSerializer):
+    spend_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = SpendCategory
+        fields = ['id', 'name', 'icon', 'color', 'created_at', 'spend_count']
+        read_only_fields = ['created_at', 'spend_count']
+
+    def get_spend_count(self, obj):
+        return obj.spends.count()
+
+
+class HomeSpendSerializer(serializers.ModelSerializer):
+    category_name  = serializers.CharField(source='category.name',  read_only=True, allow_null=True)
+    category_icon  = serializers.CharField(source='category.icon',  read_only=True, allow_null=True)
+    category_color = serializers.CharField(source='category.color', read_only=True, allow_null=True)
+    paid_by_name   = serializers.CharField(source='paid_by.name',   read_only=True, allow_null=True)
+
+    class Meta:
+        model  = HomeSpend
+        fields = [
+            'id', 'date', 'category', 'category_name', 'category_icon', 'category_color',
+            'description', 'amount', 'store_name', 'paid_by', 'paid_by_name',
+            'payment_method', 'notes', 'created_at',
+        ]
+        read_only_fields = ['created_at', 'category_name', 'category_icon', 'category_color', 'paid_by_name']
+
+
+class EducationExpenseSerializer(serializers.ModelSerializer):
+    member_name   = serializers.CharField(source='family_member.name',   read_only=True, allow_null=True)
+    member_avatar = serializers.CharField(source='family_member.avatar', read_only=True, allow_null=True)
+
+    class Meta:
+        model  = EducationExpense
+        fields = [
+            'id', 'family_member', 'member_name', 'member_avatar',
+            'date', 'category', 'description', 'amount',
+            'institution', 'academic_year', 'payment_method', 'notes', 'created_at',
+        ]
+        read_only_fields = ['created_at', 'member_name', 'member_avatar']

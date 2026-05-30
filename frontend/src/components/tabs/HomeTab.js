@@ -16,7 +16,7 @@ function greet() {
   return 'Good evening';
 }
 
-export default function HomeTab({ balance, advances, purchases, lpgStatus, medicines, vehicles, onNavigate }) {
+export default function HomeTab({ balance, advances, purchases, lpgStatus, medicines, vehicles, appliances, onNavigate }) {
   const today = todayStr();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const [upcoming, setUpcoming] = useState([]);
@@ -74,6 +74,16 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         alerts.push({ type: v.days_until_oil_change <= 0 ? 'danger' : 'warn', icon: '🔄', text: `${label} oil change ${v.days_until_oil_change <= 0 ? 'OVERDUE' : `due in ${v.days_until_oil_change}d`}` });
       if (v.days_until_warranty_expiry !== null && v.days_until_warranty_expiry <= 30 && v.days_until_warranty_expiry >= 0)
         alerts.push({ type: 'warn', icon: '🛡️', text: `${label} extended warranty expires in ${v.days_until_warranty_expiry}d` });
+    });
+  }
+  if (appliances && appliances.length > 0) {
+    appliances.filter(a => a.is_active).forEach(a => {
+      if (a.days_until_warranty !== null && a.days_until_warranty !== undefined && a.days_until_warranty <= 30)
+        alerts.push({ type: a.days_until_warranty <= 0 ? 'danger' : 'warn', icon: '🔌', text: `${a.name} warranty ${a.days_until_warranty <= 0 ? 'EXPIRED' : `expires in ${a.days_until_warranty}d`}` });
+      if (a.days_until_amc !== null && a.days_until_amc !== undefined && a.days_until_amc <= 30)
+        alerts.push({ type: a.days_until_amc <= 0 ? 'danger' : 'warn', icon: '🔌', text: `${a.name} AMC ${a.days_until_amc <= 0 ? 'EXPIRED' : `expires in ${a.days_until_amc}d`}` });
+      if (a.days_until_next_service !== null && a.days_until_next_service !== undefined && a.days_until_next_service <= 14)
+        alerts.push({ type: a.days_until_next_service <= 0 ? 'danger' : 'warn', icon: '🔧', text: `${a.name} service ${a.days_until_next_service <= 0 ? 'OVERDUE' : `due in ${a.days_until_next_service}d`}` });
     });
   }
   if (medicines && medicines.length > 0) {

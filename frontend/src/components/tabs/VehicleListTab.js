@@ -18,7 +18,7 @@ function statusBadge(days, label, warnDays = 30) {
   return <span style={{ fontSize: 10, fontWeight: 700, color, background: bg, borderRadius: 4, padding: '2px 6px', marginRight: 4 }}>{text}</span>;
 }
 
-export default function VehicleListTab({ vehicles, showToast, onSaved }) {
+export default function VehicleListTab({ vehicles, showToast, onSaved, selectedVehicleId, onSelectVehicle }) {
   const [showForm, setShowForm]   = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [editId, setEditId]       = useState(null);
@@ -67,7 +67,7 @@ export default function VehicleListTab({ vehicles, showToast, onSaved }) {
     const emoji = TYPE_EMOJI[v.vehicle_type] || '🚗';
     const expanded = expandId === v.id;
     return (
-      <div style={{ ...s.card, borderLeft: `4px solid ${FUEL_COLOR[v.fuel_type] || '#64748b'}`, marginBottom: 10 }}>
+      <div style={{ ...s.card, borderLeft: `4px solid ${FUEL_COLOR[v.fuel_type] || '#64748b'}`, marginBottom: 10, outline: String(v.id) === selectedVehicleId ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           {v.image_url
             ? <img src={v.image_url} alt={v.make} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
@@ -96,6 +96,11 @@ export default function VehicleListTab({ vehicles, showToast, onSaved }) {
             {v.purchase_date && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Purchased: {fmtD(v.purchase_date)}</div>}
             {v.notes && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{v.notes}</div>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {String(v.id) !== selectedVehicleId && v.is_active && (
+                <button onClick={() => onSelectVehicle?.(String(v.id))} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: '#16a34a' }}>
+                  ✓ Set as Active Vehicle
+                </button>
+              )}
               <button onClick={() => handleEdit(v)} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px' }}>✏️ Edit</button>
               <button onClick={() => handleDeactivate(v)} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: v.is_active ? '#ef4444' : '#16a34a' }}>
                 {v.is_active ? '🚫 Deactivate' : '✓ Reactivate'}
