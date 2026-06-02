@@ -12,6 +12,7 @@ from .models import (
     FamilyMember, DiaryEntry, EntryNote, EntryExpense,
     HomeAppliance, ApplianceService, ElectricityBill,
     SpendCategory, HomeSpend, EducationExpense,
+    LendingLog, PaybackLog,
 )
 
 
@@ -702,3 +703,55 @@ class EducationExpenseSerializer(serializers.ModelSerializer):
             'institution', 'academic_year', 'payment_method', 'notes', 'created_at',
         ]
         read_only_fields = ['created_at', 'member_name', 'member_avatar']
+
+
+# ── Lending / IOU Serializers ─────────────────────────────────────────────────
+
+class PaybackLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = PaybackLog
+        fields = ['id', 'lending', 'date', 'amount', 'notes', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class LendingLogSerializer(serializers.ModelSerializer):
+    paybacks        = PaybackLogSerializer(many=True, read_only=True)
+    total_paid      = serializers.SerializerMethodField()
+    outstanding     = serializers.SerializerMethodField()
+    status          = serializers.SerializerMethodField()
+    contact_display = serializers.SerializerMethodField()
+    contact_avatar  = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = LendingLog
+        fields = [
+            'id', 'contact', 'contact_name', 'contact_display', 'contact_avatar',
+            'date', 'description', 'amount', 'notes', 'created_at', 'updated_at',
+            'paybacks', 'total_paid', 'outstanding', 'status',
+        ]
+        read_only_fields = ['created_at', 'updated_at',
+                            'total_paid', 'outstanding', 'status',
+                            'contact_display', 'contact_avatar']
+
+    def _total_paid(self, obj):
+        return sum(p.amount for p in obj.paybacks.all())
+
+    def get_total_paid(self, obj):
+        return self._total_paid(obj)
+
+    def get_outstanding(self, obj):
+        return round(obj.amount - self._total_paid(obj), 2)
+
+    def get_status(self, obj):
+        paid = self._total_paid(obj)
+        if paid <= 0:
+            return 'outstanding'
+        if paid < obj.amount:
+            return 'partial'
+        return 'settled'
+
+    def get_contact_display(self, obj):
+        return obj.contact.name if obj.contact else obj.contact_name or 'Unknown'
+
+    def get_contact_avatar(self, obj):
+        return obj.contact.avatar if obj.contact else ''

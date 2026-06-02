@@ -13,6 +13,7 @@ from .views import (
     FamilyMemberViewSet, DiaryEntryViewSet, EntryNoteViewSet, EntryExpenseViewSet,
     HomeApplianceViewSet, ApplianceServiceViewSet, ElectricityBillViewSet,
     SpendCategoryViewSet, HomeSpendViewSet, EducationExpenseViewSet,
+    LendingLogViewSet, PaybackLogViewSet,
     login_view, logout_view, current_user, health_check
 )
 
@@ -56,6 +57,8 @@ router.register(r'electricity-bills',    ElectricityBillViewSet,    basename='el
 router.register(r'spend-categories',     SpendCategoryViewSet,      basename='spend-category')
 router.register(r'home-spends',          HomeSpendViewSet,          basename='home-spend')
 router.register(r'education-expenses',   EducationExpenseViewSet,   basename='education-expense')
+router.register(r'lendings',             LendingLogViewSet,         basename='lending')
+router.register(r'paybacks',             PaybackLogViewSet,         basename='payback')
 
 urlpatterns = [
     path('', include(router.urls)),

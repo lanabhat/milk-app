@@ -35,6 +35,7 @@ import HomeServiceTab from './tabs/HomeServiceTab';
 import HomeElectricityTab from './tabs/HomeElectricityTab';
 import HomeSpendsTab from './tabs/HomeSpendsTab';
 import HomeEducationTab from './tabs/HomeEducationTab';
+import HomeLendingTab from './tabs/HomeLendingTab';
 
 const NAV = [
   {
@@ -100,6 +101,7 @@ const NAV = [
       { id: 'home-electric',   label: 'Electricity',icon: '⚡' },
       { id: 'home-spends',     label: 'Spends',     icon: '🛒' },
       { id: 'home-education',  label: 'Education',  icon: '📚' },
+      { id: 'home-lending',    label: 'Lending',    icon: '🤝' },
     ],
   },
   {
@@ -136,8 +138,9 @@ export default function Dashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('sidebarCollapsed') === 'true'
   );
-  const [toast, setToast] = useState(null);
-  const [theme, setTheme] = useState('light');
+  const [toast,    setToast]    = useState(null);
+  const [theme,    setTheme]    = useState('light');
+  const [fontSize, setFontSize] = useState(() => localStorage.getItem('appFontSize') || 'lg');
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -206,10 +209,27 @@ export default function Dashboard() {
     } catch (e) { console.error(e); }
   }, []);
 
+  // Zoom levels — scales ALL text including inline px values
+  const FONT_SIZES  = { sm: '1', md: '1.12', lg: '1.27', xl: '1.45' };
+  const FONT_LABELS = { sm: 'S', md: 'M', lg: 'L', xl: 'XL' };
+
+  const applyFontSize = (size) => {
+    const root = document.getElementById('root');
+    if (root) root.style.zoom = FONT_SIZES[size] || '1.12';
+    localStorage.setItem('appFontSize', size);
+  };
+
+  const handleFontSizeChange = (size) => {
+    setFontSize(size);
+    applyFontSize(size);
+  };
+
   useEffect(() => {
     if (!localStorage.getItem('token')) { window.location.href = '/'; return; }
     const saved = loadSavedTheme();
     setTheme(saved);
+    const savedSize = localStorage.getItem('appFontSize') || 'lg';
+    applyFontSize(savedSize);
     fetchData();
     fetchLpgStatus();
   }, [fetchData, fetchLpgStatus]);
@@ -252,6 +272,15 @@ export default function Dashboard() {
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+  // Bottom nav: 4 pinned sections + More
+  const BOTTOM_NAV_ITEMS = [
+    { id: 'home',      label: 'Home',     icon: '🏠', defaultTab: 'home'     },
+    { id: 'milk',      label: 'Milk',     icon: '🥛', defaultTab: 'purchase' },
+    { id: 'medicare',  label: 'Medicare', icon: '💊', defaultTab: 'give'     },
+    { id: 'home-mgmt', label: 'Home',     icon: '🏡', defaultTab: 'home-appliances' },
+    { id: 'vehicles',  label: 'Vehicles', icon: '🚗', defaultTab: 'vehicle-list' },
+  ];
+
   return (
     <div style={s.page}>
       {/* Header */}
@@ -269,10 +298,10 @@ export default function Dashboard() {
           myManeAI
         </button>
 
-        <span style={s.userEmail}>{user.email || ''}</span>
+        <span className="header-email" style={s.userEmail}>{user.email || ''}</span>
 
-        {/* Theme swatches */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 8 }}>
+        {/* Theme swatches — hidden on mobile (shown in sidebar instead) */}
+        <div className="theme-swatches-group" style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 8 }}>
           {Object.values(THEMES).map(t => (
             <button
               key={t.name}
@@ -282,6 +311,16 @@ export default function Dashboard() {
               style={{ backgroundColor: t.swatch }}
               aria-label={`Switch to ${t.label} theme`}
             />
+          ))}
+        </div>
+
+        {/* Font size picker */}
+        <div className="font-size-group" style={{ display: 'flex', gap: 3, alignItems: 'center', marginLeft: 8 }} title="Text size">
+          {[['sm','S'],['md','M'],['lg','L'],['xl','XL']].map(([size, label]) => (
+            <button key={size} onClick={() => handleFontSizeChange(size)} title={`Text size: ${size}`}
+              style={{ padding: '3px 7px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: fontSize === size ? 800 : 500, fontSize: size === 'sm' ? 11 : size === 'md' ? 13 : size === 'lg' ? 15 : 17, backgroundColor: fontSize === size ? 'var(--accent)' : 'var(--bg2)', color: fontSize === size ? 'white' : 'var(--text-muted)', lineHeight: 1 }}>
+              {label}
+            </button>
           ))}
         </div>
 
@@ -324,6 +363,27 @@ export default function Dashboard() {
               </div>
             );
           })}
+
+          {/* Sidebar footer — theme + font size (shown on mobile via drawer) */}
+          <div className="sidebar-footer">
+            <div style={{ fontSize: 10, color: 'var(--text-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Theme</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              {Object.values(THEMES).map(t => (
+                <button key={t.name} title={t.label} onClick={() => handleThemeChange(t.name)}
+                  className={`theme-swatch${theme === t.name ? ' active' : ''}`}
+                  style={{ backgroundColor: t.swatch }} aria-label={`Switch to ${t.label} theme`} />
+              ))}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Text Size</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[['sm','S'],['md','M'],['lg','L'],['xl','XL']].map(([size, label]) => (
+                <button key={size} onClick={() => handleFontSizeChange(size)}
+                  style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: fontSize === size ? 800 : 500, fontSize: size === 'sm' ? 11 : size === 'md' ? 13 : size === 'lg' ? 15 : 17, backgroundColor: fontSize === size ? 'var(--accent)' : 'var(--bg2)', color: fontSize === size ? 'white' : 'var(--text-muted)' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </nav>
 
         {/* Main content */}
@@ -476,6 +536,9 @@ export default function Dashboard() {
             {tab === 'home-education' && (
               <HomeEducationTab family={family} showToast={showToast} onSaved={fetchData} />
             )}
+            {tab === 'home-lending' && (
+              <HomeLendingTab family={family} showToast={showToast} onSaved={fetchData} />
+            )}
             {tab === 'lpg' && (
               <LpgTab showToast={showToast} />
             )}
@@ -542,6 +605,23 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
+
+      {/* Bottom navigation — mobile only (CSS hides on desktop) */}
+      <nav className="bottom-nav">
+        {BOTTOM_NAV_ITEMS.map(item => (
+          <button key={item.id}
+            className={`bottom-nav-btn${section === item.id ? ' active' : ''}`}
+            onClick={() => navigate(item.defaultTab, item.id)}>
+            <span className="bottom-nav-icon">{item.icon}</span>
+            <span className="bottom-nav-label">{item.label}</span>
+          </button>
+        ))}
+        <button className={`bottom-nav-btn${sidebarOpen ? ' active' : ''}`}
+          onClick={() => setSidebarOpen(true)}>
+          <span className="bottom-nav-icon">⋯</span>
+          <span className="bottom-nav-label">More</span>
+        </button>
+      </nav>
     </div>
   );
 }

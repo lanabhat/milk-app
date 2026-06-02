@@ -281,7 +281,7 @@ export default function PatientsTab({ showToast, patients, medicines, onSaved })
     // Re-find the patient from the live list so medicine_count stays fresh
     const fresh = list.find(p => p.id === selectedPatient.id) || selectedPatient;
     return (
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 4px' }}>
+      <div style={{ width: '100%', padding: '0 4px' }}>
         <PatientDetail
           patient={fresh}
           showToast={showToast}
@@ -294,7 +294,7 @@ export default function PatientsTab({ showToast, patients, medicines, onSaved })
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       <div style={s.twoPanel}>
 
         {/* Left — patient list */}

@@ -690,7 +690,8 @@ class FamilyMember(models.Model):
     RELATION_CHOICES = [
         ('self', 'Self/Me'), ('spouse', 'Spouse'), ('son', 'Son'),
         ('daughter', 'Daughter'), ('father', 'Father'), ('mother', 'Mother'),
-        ('sibling', 'Sibling'), ('other', 'Other'),
+        ('sibling', 'Sibling'), ('uncle', 'Uncle'), ('aunt', 'Aunt'),
+        ('friend', 'Friend'), ('colleague', 'Colleague'), ('other', 'Other'),
     ]
     user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='family_members')
     name       = models.CharField(max_length=100)
@@ -911,3 +912,38 @@ class EducationExpense(models.Model):
     def __str__(self):
         name = self.family_member.name if self.family_member else 'unknown'
         return f"{name} — {self.category} ₹{self.amount}"
+
+
+# ── Lending / IOU Tracker ─────────────────────────────────────────────────────
+
+class LendingLog(models.Model):
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lendings')
+    contact      = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='lendings')
+    contact_name = models.CharField(max_length=100, blank=True)  # free-text fallback
+    date         = models.DateField()
+    description  = models.CharField(max_length=300)
+    amount       = models.FloatField()
+    notes        = models.CharField(max_length=200, blank=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        name = self.contact.name if self.contact else self.contact_name or 'Unknown'
+        return f"{self.user.email} lent ₹{self.amount} to {name} on {self.date}"
+
+
+class PaybackLog(models.Model):
+    lending    = models.ForeignKey(LendingLog, on_delete=models.CASCADE, related_name='paybacks')
+    date       = models.DateField()
+    amount     = models.FloatField()
+    notes      = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date']
+
+    def __str__(self):
+        return f"Payback ₹{self.amount} for lending #{self.lending_id} on {self.date}"

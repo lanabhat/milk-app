@@ -145,7 +145,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
   const subStyle = { fontSize: 12, color: 'var(--text-muted)' };
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* Welcome */}
       <div style={{ ...cardStyle, background: 'var(--accent)', border: 'none', color: 'white' }}>

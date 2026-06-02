@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { styles as s } from '../../styles/dashboard';
 
-const RELATION_LABELS = { self: 'Self/Me', spouse: 'Spouse', son: 'Son', daughter: 'Daughter', father: 'Father', mother: 'Mother', sibling: 'Sibling', other: 'Other' };
-const RELATION_COLORS = { self: '#1d4ed8', spouse: '#be185d', son: '#0369a1', daughter: '#7c3aed', father: '#64748b', mother: '#d97706', sibling: '#0891b2', other: '#475569' };
+const RELATION_LABELS = { self: 'Self/Me', spouse: 'Spouse', son: 'Son', daughter: 'Daughter', father: 'Father', mother: 'Mother', sibling: 'Sibling', uncle: 'Uncle', aunt: 'Aunt', friend: 'Friend', colleague: 'Colleague', other: 'Other' };
+const RELATION_COLORS = { self: '#1d4ed8', spouse: '#be185d', son: '#0369a1', daughter: '#7c3aed', father: '#64748b', mother: '#d97706', sibling: '#0891b2', uncle: '#0ea5e9', aunt: '#ec4899', friend: '#16a34a', colleague: '#f97316', other: '#475569' };
 const AVATARS = ['👤', '👩', '🧑', '👦', '👧', '👴', '👵', '👨', '🧒', '👶'];
 const EMPTY_FORM = { name: '', relation: 'other', avatar: '👤' };
 

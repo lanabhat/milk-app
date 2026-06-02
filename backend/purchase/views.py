@@ -19,6 +19,7 @@ from .models import (
     FamilyMember, DiaryEntry, EntryNote, EntryExpense,
     HomeAppliance, ApplianceService, ElectricityBill,
     SpendCategory, HomeSpend, EducationExpense,
+    LendingLog, PaybackLog,
 )
 from .serializers import (
     UserSerializer, ItemSerializer, PurchaseSerializer,
@@ -35,6 +36,7 @@ from .serializers import (
     FamilyMemberSerializer, DiaryEntrySerializer, EntryNoteSerializer, EntryExpenseSerializer,
     HomeApplianceSerializer, ApplianceServiceSerializer, ElectricityBillSerializer,
     SpendCategorySerializer, HomeSpendSerializer, EducationExpenseSerializer,
+    LendingLogSerializer, PaybackLogSerializer,
 )
 from django.db.models import Prefetch
 
@@ -1465,3 +1467,31 @@ class EducationExpenseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+# ── Lending / IOU ViewSets ────────────────────────────────────────────────────
+
+class LendingLogViewSet(viewsets.ModelViewSet):
+    serializer_class   = LendingLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = LendingLog.objects.filter(user=self.request.user).prefetch_related('paybacks').select_related('contact')
+        p  = self.request.query_params
+        if p.get('contact_id'):
+            qs = qs.filter(contact_id=p['contact_id'])
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class PaybackLogViewSet(viewsets.ModelViewSet):
+    serializer_class   = PaybackLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = PaybackLog.objects.filter(lending__user=self.request.user)
+        if self.request.query_params.get('lending_id'):
+            qs = qs.filter(lending_id=self.request.query_params['lending_id'])
+        return qs

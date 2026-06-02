@@ -185,7 +185,7 @@ export default function VitalsTab({ patients = [], showToast }) {
   const sugarData = readings.filter(r => r.blood_sugar != null).map(r => ({ value: parseFloat(r.blood_sugar), label: r.recorded_at?.slice(0,10) })).reverse();
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
 
       {/* Patient selector */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>

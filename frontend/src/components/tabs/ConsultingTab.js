@@ -168,7 +168,7 @@ export default function ConsultingTab({ patients = [], showToast, onSaved }) {
   });
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
 
       {/* Upcoming appointments */}
       {upcoming.length > 0 && (

@@ -141,7 +141,7 @@ export default function MedicinePurchaseTab({ medicines = [], patients = [], sho
   }, {});
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       <div style={s.twoPanel}>
 
         {/* Left — purchase list */}

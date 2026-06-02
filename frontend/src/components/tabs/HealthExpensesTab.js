@@ -136,6 +136,111 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
     setTab('add');
   };
 
+  const handleGenerateReport = () => {
+    const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+    const fmtAmt  = (v) => '₹' + parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const filters = [
+      typeFilter    && `Type: ${TYPE_MAP[typeFilter]?.label || typeFilter}`,
+      patientFilter && `Patient: ${patients.find(p => String(p.id) === patientFilter)?.name || patientFilter}`,
+      payerFilter   && `Paid by: ${payerFilter}`,
+    ].filter(Boolean);
+
+    // Group expenses by date
+    const byDate = expenses.reduce((acc, e) => { (acc[e.expense_date] = acc[e.expense_date] || []).push(e); return acc; }, {});
+    const sortedDates = Object.keys(byDate).sort().reverse();
+
+    const typeRows = (summary?.by_type || []).map(t => {
+      const info = TYPE_MAP[t.type] || { label: t.type };
+      const pct  = totalAmount > 0 ? (t.total / totalAmount * 100).toFixed(1) : '0';
+      return `<tr><td>${info.label}</td><td style="text-align:right">${fmtAmt(t.total)}</td><td style="text-align:right;color:#64748b">${pct}%</td></tr>`;
+    }).join('');
+
+    const patientRows = (summary?.by_patient || []).map(p =>
+      `<tr><td>👤 ${p.patient}</td><td style="text-align:right">${fmtAmt(p.total)}</td></tr>`
+    ).join('');
+
+    const payerRows = (summary?.by_payer || []).map(p =>
+      `<tr><td>${p.payer}</td><td style="text-align:right">${fmtAmt(p.total)}</td></tr>`
+    ).join('');
+
+    const expenseRows = sortedDates.map(date => {
+      const dayTotal = byDate[date].reduce((s, e) => s + parseFloat(e.amount), 0);
+      const items = byDate[date].map(e => {
+        const info = TYPE_MAP[e.expense_type] || { label: e.expense_type };
+        return `<tr>
+          <td style="padding:4px 12px 4px 28px;color:#555">${info.label}</td>
+          <td style="padding:4px 12px;color:#555">${e.description}${e.patient_name ? ` <span style="color:#94a3b8">(${e.patient_name})</span>` : ''}</td>
+          <td style="padding:4px 12px;color:#555">${e.paid_by || '—'}</td>
+          <td style="padding:4px 12px;color:#555">${PM_LABELS[e.payment_method] || e.payment_method}</td>
+          <td style="padding:4px 12px;text-align:right;color:#555">${fmtAmt(e.amount)}</td>
+        </tr>`;
+      }).join('');
+      return `<tr style="background:#f8fafc">
+        <td style="padding:6px 12px;font-weight:700" colspan="4">${fmtDate(date)}</td>
+        <td style="padding:6px 12px;font-weight:700;text-align:right">${fmtAmt(dayTotal)}</td>
+      </tr>${items}`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><title>Medicare Expenses Report</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;background:white;padding:36px}
+  h1{font-size:22px;font-weight:800;margin-bottom:4px}
+  .sub{font-size:13px;color:#64748b;margin-bottom:6px}
+  .filter-tag{display:inline-block;font-size:11px;background:#eff6ff;color:#1d4ed8;border-radius:4px;padding:2px 8px;margin:2px 2px 10px}
+  .section-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin:22px 0 8px;border-bottom:2px solid #e2e8f0;padding-bottom:5px}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px}
+  .summary-box{border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+  .summary-box table{width:100%;border-collapse:collapse;font-size:12px}
+  .summary-box th{text-align:left;padding:7px 12px;background:#f8fafc;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0}
+  .summary-box td{padding:6px 12px;border-bottom:1px solid #f1f5f9}
+  .summary-box tr:last-child td{border-bottom:none}
+  .total-box{margin-bottom:20px;padding:14px 18px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px}
+  .total-label{font-size:12px;color:#0369a1;font-weight:600}
+  .total-value{font-size:26px;font-weight:800;color:#0369a1}
+  table.expenses{width:100%;border-collapse:collapse;font-size:12px}
+  table.expenses th{text-align:left;padding:8px 12px;background:#f8fafc;font-size:11px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0}
+  table.expenses td{border-bottom:1px solid #f1f5f9}
+  .footer{margin-top:40px;font-size:10px;color:#94a3b8;text-align:center}
+  @media print{body{padding:20px}@page{margin:15mm}}
+</style></head><body>
+  <h1>Medicare — Health Expenses Report</h1>
+  <div class="sub">Period: ${fmtDate(startDate)} to ${fmtDate(endDate)}</div>
+  ${filters.map(f => `<span class="filter-tag">${f}</span>`).join('')}
+
+  <div class="total-box">
+    <div class="total-label">Total Healthcare Spend</div>
+    <div class="total-value">${fmtAmt(totalAmount)}</div>
+    <div style="font-size:12px;color:#0369a1;margin-top:2px">${expenses.length} expense${expenses.length !== 1 ? 's' : ''}</div>
+  </div>
+
+  <div class="section-title">Summary</div>
+  <div class="summary-grid">
+    ${typeRows ? `<div class="summary-box"><table><thead><tr><th>Category</th><th style="text-align:right">Amount</th><th style="text-align:right">Share</th></tr></thead><tbody>${typeRows}</tbody></table></div>` : ''}
+    ${patientRows ? `<div class="summary-box"><table><thead><tr><th>Patient</th><th style="text-align:right">Amount</th></tr></thead><tbody>${patientRows}</tbody></table></div>` : ''}
+    ${payerRows ? `<div class="summary-box"><table><thead><tr><th>Paid By</th><th style="text-align:right">Amount</th></tr></thead><tbody>${payerRows}</tbody></table></div>` : ''}
+  </div>
+
+  <div class="section-title">Expense Detail</div>
+  <table class="expenses">
+    <thead><tr><th>Category</th><th>Description</th><th>Paid By</th><th>Method</th><th style="text-align:right">Amount</th></tr></thead>
+    <tbody>${expenseRows}</tbody>
+    <tfoot><tr style="background:#f0f9ff;font-weight:800">
+      <td colspan="4" style="padding:8px 12px">Total</td>
+      <td style="padding:8px 12px;text-align:right">${fmtAmt(totalAmount)}</td>
+    </tr></tfoot>
+  </table>
+
+  <div class="footer">Generated on ${new Date().toLocaleString('en-IN')} · Medicare Expenses Report</div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    win.print();
+  };
+
   const totalAmount    = summary?.total     || 0;
   const byType         = summary?.by_type   || [];
   const byPatient      = summary?.by_patient|| [];
@@ -151,7 +256,7 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
   byPayer.forEach((p, i) => { payerColorMap[p.payer] = PAYER_COLORS[i % PAYER_COLORS.length]; });
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
 
       {/* ── Filters ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -187,7 +292,7 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
       </div>
 
       {/* ── Sub-tabs ── */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {[['summary','📊 Summary'],['list','📋 List'],['add', editId ? '✏ Edit' : '➕ Add']].map(([v, lbl]) => (
           <button key={v} onClick={() => { setTab(v); if (v !== 'add' && !editId) resetForm(); }} style={{
             padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13,
@@ -196,6 +301,10 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
             border: `1px solid ${tab === v ? 'var(--primary)' : 'var(--border)'}`,
           }}>{lbl}</button>
         ))}
+        <button onClick={handleGenerateReport} disabled={expenses.length === 0}
+          style={{ padding: '7px 14px', borderRadius: 8, cursor: expenses.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 13, backgroundColor: '#7e22ce', color: 'white', border: 'none', opacity: expenses.length === 0 ? 0.5 : 1, marginLeft: 'auto' }}>
+          📄 Generate Report
+        </button>
       </div>
 
       {/* ── Summary tab ── */}

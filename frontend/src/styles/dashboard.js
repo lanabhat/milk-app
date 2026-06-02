@@ -22,8 +22,8 @@ export const styles = {
   tab:       { padding: '6px 14px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, backgroundColor: 'transparent', color: 'var(--text-muted)' },
   tabActive:  { backgroundColor: 'var(--accent)', color: 'white' },
 
-  body:    { padding: '16px', width: '100%', boxSizing: 'border-box' },
-  section: { maxWidth: 900, margin: '0 auto' },
+  body:    { padding: '16px 20px', width: '100%', boxSizing: 'border-box' },
+  section: { width: '100%' },
 
   twoPanel:      { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
   productsPanel: { backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'var(--shadow-sm)' },
