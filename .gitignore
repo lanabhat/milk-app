@@ -5,11 +5,15 @@ __pycache__/
 venv/
 .env
 .env.*
-*.sqlite3
+*.sqlite3*
+database/
 
 # Django
 backend/staticfiles/
 backend/media/
+
+# Planning notes (may contain credentials, not for the public repo)
+plan by copilot.md
 
 # Node / React
 node_modules/
