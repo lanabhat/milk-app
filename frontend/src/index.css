@@ -418,22 +418,17 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 600px) {
   .grid-2 { grid-template-columns: 1fr; }
 
-  /* Collapse ALL two-column grids inside cards to single column on mobile */
+  /* Collapse two-column form grids to single column on mobile */
   .card > form > div[style*="grid"],
   .card > div[style*="grid"],
   form > div[style*="grid"] {
     grid-template-columns: 1fr !important;
   }
 
-  /* Touch-friendly button/input height */
-  button { min-height: 40px; }
-  input, select, textarea { min-height: 44px; font-size: 16px !important; } /* 16px prevents iOS auto-zoom */
-
-  /* Reduce card padding slightly */
-  .card { padding: 12px !important; }
-
-  /* Reduce horizontal padding in body on small screens */
-  .main-content > div { padding-left: 10px !important; padding-right: 10px !important; }
+  /* Prevent iOS auto-zoom on input focus (font-size must be ≥16px) */
+  input[type="text"], input[type="number"], input[type="date"],
+  input[type="email"], input[type="tel"], input[type="password"],
+  select { font-size: 16px !important; }
 
   /* Stat grids — smaller min-width to fit more on mobile */
   .stat-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)) !important; }
