@@ -67,6 +67,14 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
 
   useEffect(() => { fetchTodos(); }, [fetchTodos]);
 
+  useEffect(() => {
+    const id = sessionStorage.getItem('deepLink');
+    if (!id || !todos.length) return;
+    sessionStorage.removeItem('deepLink');
+    setExpandId(parseInt(id));
+    setTimeout(() => document.getElementById(`todo-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }, [todos]);
+
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const openAdd = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(true); };
@@ -216,7 +224,7 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
         const setEF    = (k, v) => setExpForm(prev => ({ ...prev, [todo.id]: { ...(prev[todo.id] || {}), [k]: v } }));
 
         return (
-          <div key={todo.id} style={{ ...s.card, marginBottom: 8, borderLeft: `4px solid ${borderColor(todo)}`, background: isDone ? '#f8fafc' : 'white', opacity: isDone ? 0.75 : 1 }}>
+          <div key={todo.id} id={`todo-${todo.id}`} style={{ ...s.card, marginBottom: 8, borderLeft: `4px solid ${borderColor(todo)}`, background: isDone ? '#f8fafc' : 'white', opacity: isDone ? 0.75 : 1 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => setExpandId(expanded ? null : todo.id)}>
               <div style={{ width: 36, height: 36, borderRadius: 8, background: isDone ? '#dcfce7' : PRIORITY_BG[todo.priority], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
                 {isDone ? '✅' : todo.criticality === 'critical' ? '🔴' : todo.priority === 'high' ? '🟡' : '⚪'}

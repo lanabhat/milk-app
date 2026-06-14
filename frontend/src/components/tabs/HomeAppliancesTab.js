@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
@@ -25,6 +25,14 @@ export default function HomeAppliancesTab({ appliances, selectedApplianceId, onS
   const [editId, setEditId]       = useState(null);
   const [saving, setSaving]       = useState(false);
   const [expandId, setExpandId]   = useState(null);
+
+  useEffect(() => {
+    const id = sessionStorage.getItem('deepLink');
+    if (!id || !appliances.length) return;
+    sessionStorage.removeItem('deepLink');
+    setExpandId(parseInt(id));
+    setTimeout(() => document.getElementById(`appliance-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }, [appliances]);
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -68,7 +76,7 @@ export default function HomeAppliancesTab({ appliances, selectedApplianceId, onS
     const color = CAT_COLOR[a.category] || '#475569';
     const expanded = expandId === a.id;
     return (
-      <div style={{ ...s.card, borderLeft: `4px solid ${color}`, marginBottom: 10, outline: String(a.id) === selectedApplianceId ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
+      <div id={`appliance-${a.id}`} style={{ ...s.card, borderLeft: `4px solid ${color}`, marginBottom: 10, outline: String(a.id) === selectedApplianceId || expandId === a.id ? '2px solid var(--accent)' : 'none', outlineOffset: 2 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           {a.image_url
             ? <img src={a.image_url} alt={a.name} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 10, flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />

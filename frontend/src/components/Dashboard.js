@@ -71,14 +71,14 @@ const NAV = [
     label: 'Medicare',
     icon: '💊',
     tabs: [
-      { id: 'give',         label: 'Give',      icon: '💉' },
-      { id: 'medicine',     label: 'Medicines', icon: '💊' },
-      { id: 'diary',        label: 'Diary',     icon: '📓' },
-      { id: 'patients',     label: 'Patients',  icon: '👤' },
-      { id: 'med-buy',      label: 'Purchases', icon: '🏪' },
       { id: 'consult',      label: 'Consult',   icon: '🩺' },
+      { id: 'patients',     label: 'Patients',  icon: '👤' },
+      { id: 'medicine',     label: 'Medicines', icon: '💊' },
       { id: 'vitals',       label: 'Vitals',    icon: '❤️' },
+      { id: 'med-buy',      label: 'Purchases', icon: '🏪' },
       { id: 'med-expenses', label: 'Expenses',  icon: '📊' },
+      { id: 'diary',        label: 'Diary',     icon: '📓' },
+      { id: 'give',         label: 'Give',      icon: '💉' },
     ],
   },
   {
@@ -251,6 +251,7 @@ export default function Dashboard() {
     setTab(tabId);
     setSection(sectionId);
     setSidebarOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const toggleSidebar = () => {

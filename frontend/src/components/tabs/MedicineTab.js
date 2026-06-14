@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { styles as s } from '../../styles/dashboard';
 import Modal from '../common/Modal';
@@ -64,6 +64,15 @@ export default function MedicineTab({ showToast, medicines, patients = [], onSav
   const [modalQty, setModalQty]         = useState('');
   const [modalNotes, setModalNotes]     = useState('');
   const [modalSaving, setModalSaving]   = useState(false);
+  const [highlightId, setHighlightId]   = useState(null);
+
+  useEffect(() => {
+    const id = sessionStorage.getItem('deepLink');
+    if (!id || !medicines?.length) return;
+    sessionStorage.removeItem('deepLink');
+    setHighlightId(parseInt(id));
+    setTimeout(() => document.getElementById(`med-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }, [medicines]);
 
   const resetForm = () => { setForm(emptyForm); setEditId(null); setModalOpen(false); };
 
@@ -226,7 +235,7 @@ export default function MedicineTab({ showToast, medicines, patients = [], onSav
         const foodLabel = FOOD_LABELS[med.food_relation];
         const schedule = scheduleText(med);
         return (
-          <div key={med.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 5 }}>
+          <div key={med.id} id={`med-${med.id}`} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 5, ...(highlightId === med.id ? { outline: '2px solid var(--accent)', outlineOffset: 2 } : {}) }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ flex: 1 }}>
                 <span style={{ fontWeight: 700, fontSize: 14 }}>{med.medicine_name}</span>

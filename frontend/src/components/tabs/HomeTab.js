@@ -44,9 +44,10 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
   const [skippedDates, setSkippedDates] = useState(new Set());
 
   // UI state
-  const [activeCard, setActiveCard] = useState(null); // key of expanded detail panel
+  const [activeCard, setActiveCard] = useState(null);
   const [filterCat, setFilterCat]   = useState('all');
-  const [tooltip, setTooltip]       = useState(null); // card key on hover
+  const [showDetail, setShowDetail] = useState(true);
+  const [tooltip, setTooltip]       = useState(null);
   const detailRef                   = useRef(null);
 
   useEffect(() => {
@@ -59,13 +60,6 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
     fetch(`${API}/api/diary-entries/?entry_type=todo&status=open`, { headers })
       .then(r => r.ok ? r.json() : []).then(d => setOpenTodos(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
-
-  // Scroll to detail panel when opened
-  useEffect(() => {
-    if (activeCard && detailRef.current) {
-      setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
-    }
-  }, [activeCard]);
 
   // ── Derived: Cycle ──
   const latestAdvance = advances.length ? advances.reduce((a, b) => (a.date > b.date ? a : b)) : null;
@@ -90,50 +84,50 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
   // Finance
   if (balance) {
     if (balance.current_balance < 0)
-      actionItems.push({ type: 'danger', icon: '⚠️', text: `₹${fmt(Math.abs(balance.current_balance))} over advance — pay vendor`, category: 'finance', navTarget: ['payments', null] });
+      actionItems.push({ type: 'danger', icon: '⚠️', text: `₹${fmt(Math.abs(balance.current_balance))} over advance — pay vendor`, category: 'finance', navTarget: ['payments', 'milk'] });
     else if (balance.current_balance <= 200)
-      actionItems.push({ type: 'warn', icon: '💳', text: `Balance low: ₹${fmt(balance.current_balance)} remaining`, category: 'finance', navTarget: ['payments', null] });
+      actionItems.push({ type: 'warn', icon: '💳', text: `Balance low: ₹${fmt(balance.current_balance)} remaining`, category: 'finance', navTarget: ['payments', 'milk'] });
     if (cycleAgeDays !== null && cycleAgeDays >= 25 && balance.current_balance > 0)
-      actionItems.push({ type: 'warn', icon: '📅', text: `Cycle is ${cycleAgeDays}d old — consider settling`, category: 'finance', navTarget: ['payments', null] });
+      actionItems.push({ type: 'warn', icon: '📅', text: `Cycle is ${cycleAgeDays}d old — consider settling`, category: 'finance', navTarget: ['payments', 'milk'] });
   }
 
   // LPG
   if (lpgStatus) {
     if (lpgStatus.can_book)
-      actionItems.push({ type: 'ok', icon: '🔵', text: 'LPG cylinder can be booked now', category: 'lpg', navTarget: ['home', 'lpg'] });
+      actionItems.push({ type: 'ok', icon: '🔵', text: 'LPG cylinder can be booked now', category: 'lpg', navTarget: ['lpg', 'lpg'] });
     else if (lpgStatus.days_remaining !== undefined && lpgStatus.days_remaining <= 3)
-      actionItems.push({ type: 'warn', icon: '🔵', text: `LPG eligible in ${lpgStatus.days_remaining}d`, category: 'lpg', navTarget: ['home', 'lpg'] });
+      actionItems.push({ type: 'warn', icon: '🔵', text: `LPG eligible in ${lpgStatus.days_remaining}d`, category: 'lpg', navTarget: ['lpg', 'lpg'] });
   }
 
   // Vehicles
   vehicles?.filter(v => v.is_active).forEach(v => {
     const lbl = `${v.make} ${v.model} (${v.registration_no})`;
     if (v.days_until_pucc_expiry !== null && v.days_until_pucc_expiry <= 30)
-      actionItems.push({ type: v.days_until_pucc_expiry <= 0 ? 'danger' : 'warn', icon: '📋', text: `${lbl} PUCC ${v.days_until_pucc_expiry <= 0 ? 'EXPIRED' : `in ${v.days_until_pucc_expiry}d`}`, category: 'vehicles', navTarget: ['vehicles', 'docs'] });
+      actionItems.push({ type: v.days_until_pucc_expiry <= 0 ? 'danger' : 'warn', icon: '📋', text: `${lbl} PUCC ${v.days_until_pucc_expiry <= 0 ? 'EXPIRED' : `in ${v.days_until_pucc_expiry}d`}`, category: 'vehicles', navTarget: ['vehicle-docs', 'vehicles'] });
     if (v.days_until_insurance_expiry !== null && v.days_until_insurance_expiry <= 30)
-      actionItems.push({ type: v.days_until_insurance_expiry <= 0 ? 'danger' : 'warn', icon: '🛡️', text: `${lbl} insurance ${v.days_until_insurance_expiry <= 0 ? 'EXPIRED' : `in ${v.days_until_insurance_expiry}d`}`, category: 'vehicles', navTarget: ['vehicles', 'docs'] });
+      actionItems.push({ type: v.days_until_insurance_expiry <= 0 ? 'danger' : 'warn', icon: '🛡️', text: `${lbl} insurance ${v.days_until_insurance_expiry <= 0 ? 'EXPIRED' : `in ${v.days_until_insurance_expiry}d`}`, category: 'vehicles', navTarget: ['vehicle-docs', 'vehicles'] });
     if (v.days_until_next_service !== null && v.days_until_next_service <= 14)
-      actionItems.push({ type: v.days_until_next_service <= 0 ? 'danger' : 'warn', icon: '🔧', text: `${lbl} service ${v.days_until_next_service <= 0 ? 'OVERDUE' : `in ${v.days_until_next_service}d`}`, category: 'vehicles', navTarget: ['vehicles', 'maint'] });
+      actionItems.push({ type: v.days_until_next_service <= 0 ? 'danger' : 'warn', icon: '🔧', text: `${lbl} service ${v.days_until_next_service <= 0 ? 'OVERDUE' : `in ${v.days_until_next_service}d`}`, category: 'vehicles', navTarget: ['vehicle-maint', 'vehicles'] });
     if (v.days_until_oil_change !== null && v.days_until_oil_change <= 14)
-      actionItems.push({ type: v.days_until_oil_change <= 0 ? 'danger' : 'warn', icon: '🔄', text: `${lbl} oil ${v.days_until_oil_change <= 0 ? 'OVERDUE' : `in ${v.days_until_oil_change}d`}`, category: 'vehicles', navTarget: ['vehicles', 'maint'] });
+      actionItems.push({ type: v.days_until_oil_change <= 0 ? 'danger' : 'warn', icon: '🔄', text: `${lbl} oil ${v.days_until_oil_change <= 0 ? 'OVERDUE' : `in ${v.days_until_oil_change}d`}`, category: 'vehicles', navTarget: ['vehicle-maint', 'vehicles'] });
   });
 
   // Appliances
   appliances?.filter(a => a.is_active).forEach(a => {
     if (a.days_until_warranty !== null && a.days_until_warranty !== undefined && a.days_until_warranty <= 30)
-      actionItems.push({ type: a.days_until_warranty <= 0 ? 'danger' : 'warn', icon: '🔌', text: `${a.name} warranty ${a.days_until_warranty <= 0 ? 'EXPIRED' : `in ${a.days_until_warranty}d`}`, category: 'appliances', navTarget: ['home', 'appliances'] });
+      actionItems.push({ type: a.days_until_warranty <= 0 ? 'danger' : 'warn', icon: '🔌', text: `${a.name} warranty ${a.days_until_warranty <= 0 ? 'EXPIRED' : `in ${a.days_until_warranty}d`}`, category: 'appliances', navTarget: ['home-appliances', 'home-mgmt'], itemId: a.id });
     if (a.days_until_amc !== null && a.days_until_amc !== undefined && a.days_until_amc <= 30)
-      actionItems.push({ type: a.days_until_amc <= 0 ? 'danger' : 'warn', icon: '🔌', text: `${a.name} AMC ${a.days_until_amc <= 0 ? 'EXPIRED' : `in ${a.days_until_amc}d`}`, category: 'appliances', navTarget: ['home', 'appliances'] });
+      actionItems.push({ type: a.days_until_amc <= 0 ? 'danger' : 'warn', icon: '🔌', text: `${a.name} AMC ${a.days_until_amc <= 0 ? 'EXPIRED' : `in ${a.days_until_amc}d`}`, category: 'appliances', navTarget: ['home-appliances', 'home-mgmt'], itemId: a.id });
     if (a.days_until_next_service !== null && a.days_until_next_service !== undefined && a.days_until_next_service <= 14)
-      actionItems.push({ type: a.days_until_next_service <= 0 ? 'danger' : 'warn', icon: '🔧', text: `${a.name} service ${a.days_until_next_service <= 0 ? 'OVERDUE' : `in ${a.days_until_next_service}d`}`, category: 'appliances', navTarget: ['home', 'appliances'] });
+      actionItems.push({ type: a.days_until_next_service <= 0 ? 'danger' : 'warn', icon: '🔧', text: `${a.name} service ${a.days_until_next_service <= 0 ? 'OVERDUE' : `in ${a.days_until_next_service}d`}`, category: 'appliances', navTarget: ['home-appliances', 'home-mgmt'], itemId: a.id });
   });
 
   // Medicines
   medicines?.forEach(med => {
     if (med.alert_level === 'critical')
-      actionItems.push({ type: 'danger', icon: '🔴', text: `${med.medicine_name} critically low${med.days_left !== null ? ` — ${med.days_left}d` : ''}`, category: 'medicines', navTarget: ['medicare', 'medicines'] });
+      actionItems.push({ type: 'danger', icon: '🔴', text: `${med.medicine_name} critically low${med.days_left !== null ? ` — ${med.days_left}d` : ''}`, category: 'medicines', navTarget: ['medicine', 'medicare'], itemId: med.id });
     else if (med.alert_level === 'low')
-      actionItems.push({ type: 'warn', icon: '🟡', text: `${med.medicine_name} low stock (${parseFloat(med.current_stock)} ${med.unit})`, category: 'medicines', navTarget: ['medicare', 'medicines'] });
+      actionItems.push({ type: 'warn', icon: '🟡', text: `${med.medicine_name} low stock (${parseFloat(med.current_stock)} ${med.unit})`, category: 'medicines', navTarget: ['medicine', 'medicare'], itemId: med.id });
   });
 
   // Milk missing purchases
@@ -146,13 +140,13 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
   // Todos
   openTodos.forEach(t => {
     const type = t.criticality === 'critical' ? 'danger' : (t.due_date && t.due_date < today) ? 'warn' : 'ok';
-    actionItems.push({ type, icon: t.criticality === 'critical' ? '🔴' : '✅', text: `${t.title}${t.due_date ? ` · due ${fmtD(t.due_date)}` : ''}`, category: 'todos', navTarget: ['journal', 'todo'] });
+    actionItems.push({ type, icon: t.criticality === 'critical' ? '🔴' : '✅', text: `${t.title}${t.due_date ? ` · due ${fmtD(t.due_date)}` : ''}`, category: 'todos', navTarget: ['journal-todo', 'journal'], itemId: t.id });
   });
 
   // Upcoming consultations
   upcoming.forEach(c => {
     const d = c.days_until_next;
-    actionItems.push({ type: d <= 7 ? 'warn' : 'ok', icon: '🩺', text: `${c.patient_name} — ${c.doctor_name} · ${d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `in ${d}d`}`, category: 'appointments', navTarget: ['medicare', 'consult'] });
+    actionItems.push({ type: d <= 7 ? 'warn' : 'ok', icon: '🩺', text: `${c.patient_name} — ${c.doctor_name} · ${d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `in ${d}d`}`, category: 'appointments', navTarget: ['consult', 'medicare'], itemId: c.id });
   });
 
   actionItems.sort((a, b) => (TYPE_ORDER[a.type] ?? 3) - (TYPE_ORDER[b.type] ?? 3));
@@ -183,7 +177,6 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
     return 'none';
   };
 
-  // Milk card: primary = balance, secondary = cycle + missing
   const milkStatus = (() => {
     if (!balance) return 'none';
     if (balance.current_balance < 0) return 'danger';
@@ -213,7 +206,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         + (balance.current_advance_date ? ` · ${fmtShort(balance.current_advance_date)}` : '')
         : 'No data',
       items: finItems,
-      navTarget: ['payments', null],
+      navTarget: ['payments', 'milk'],
     },
     {
       key: 'todos', icon: '✅', label: 'Todos',
@@ -224,7 +217,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         overdueTodos > 0  ? `${overdueTodos} overdue`  : '',
       ].filter(Boolean).join(' · ') || (openTodos.length === 0 ? 'Nothing pending' : `${openTodos.length} task${openTodos.length > 1 ? 's' : ''}`),
       items: todoItems,
-      navTarget: ['journal', 'todo'],
+      navTarget: ['journal-todo', 'journal'],
     },
     {
       key: 'medicines', icon: '💊', label: 'Medicines',
@@ -234,7 +227,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         ? medItems.slice(0, 2).map(i => i.text.split(' — ')[0]).join(', ')
         : 'Stock levels fine',
       items: medItems,
-      navTarget: ['medicare', 'medicines'],
+      navTarget: ['medicine', 'medicare'],
     },
     {
       key: 'vehicles', icon: '🚗', label: 'Vehicles',
@@ -244,7 +237,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         ? vehItems[0].text.replace(/\(.*?\)/g, '').trim()
         : 'Docs & service up to date',
       items: vehItems,
-      navTarget: ['vehicles', 'maint'],
+      navTarget: ['vehicle-maint', 'vehicles'],
     },
     {
       key: 'appliances', icon: '🔌', label: 'Appliances',
@@ -254,7 +247,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         ? appItems.slice(0, 2).map(i => i.text.split(' warranty')[0].split(' AMC')[0].split(' service')[0]).join(', ')
         : 'Warranty & AMC current',
       items: appItems,
-      navTarget: ['home', 'appliances'],
+      navTarget: ['home-appliances', 'home-mgmt'],
     },
     {
       key: 'lpg', icon: '🔵', label: 'LPG',
@@ -264,7 +257,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         ? (lpgStatus.can_book ? '✓ Can book now' : `${lpgStatus.days_remaining}d until eligible`)
         : 'No data',
       items: lpgItems,
-      navTarget: ['home', 'lpg'],
+      navTarget: ['lpg', 'lpg'],
     },
     {
       key: 'appointments', icon: '🩺', label: 'Health',
@@ -274,7 +267,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         ? `${upcoming[0].patient_name} · ${fmtD(upcoming[0].next_appointment_date)}`
         : 'No upcoming appointments',
       items: hlthItems,
-      navTarget: ['medicare', 'consult'],
+      navTarget: ['consult', 'medicare'],
     },
   ];
 
@@ -315,8 +308,10 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
             : 'var(--shadow)',
         }}
         onClick={() => {
-          setActiveCard(isActive ? null : def.key);
-          setFilterCat(def.key === 'milk' ? 'milk' : def.key === 'appointments' ? 'appointments' : def.key);
+          const newKey = isActive ? null : def.key;
+          setActiveCard(newKey);
+          setFilterCat(newKey ? def.key : 'all');
+          setShowDetail(true);
           setTooltip(null);
         }}
         onMouseEnter={() => setTooltip(def.key)}
@@ -398,8 +393,8 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
         {cardDefs.map(def => <SummaryCard key={def.key} def={def} />)}
       </div>
 
-      {/* Detail panel */}
-      {activeCard && (
+      {/* Notifications panel — always visible, tap a card to filter */}
+      {showDetail && (
         <div ref={detailRef} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', boxShadow: 'var(--shadow)' }}>
 
           {/* Panel header */}
@@ -407,7 +402,7 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
             <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>
               🔔 Notifications
             </div>
-            <button onClick={() => setActiveCard(null)}
+            <button onClick={() => { setShowDetail(false); setActiveCard(null); setFilterCat('all'); }}
               style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-faint)', padding: '2px 6px', lineHeight: 1 }}>
               ✕
             </button>
@@ -468,7 +463,10 @@ export default function HomeTab({ balance, advances, purchases, lpgStatus, medic
                     )}
                   </div>
                   {!item.date && item.navTarget && (
-                    <button onClick={() => onNavigate?.(...item.navTarget)}
+                    <button onClick={() => {
+                      if (item.itemId) sessionStorage.setItem('deepLink', String(item.itemId));
+                      onNavigate?.(...item.navTarget);
+                    }}
                       style={{ flexShrink: 0, padding: '6px 12px', background: 'rgba(0,0,0,0.06)', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', color: 'var(--text)', whiteSpace: 'nowrap' }}>
                       Go →
                     </button>

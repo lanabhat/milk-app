@@ -89,6 +89,14 @@ export default function ConsultingTab({ patients = [], showToast, onSaved }) {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
+  useEffect(() => {
+    const id = sessionStorage.getItem('deepLink');
+    if (!id || !records.length) return;
+    sessionStorage.removeItem('deepLink');
+    setExpandedId(parseInt(id));
+    setTimeout(() => document.getElementById(`consult-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }, [records]);
+
   const resetForm = () => { setForm(emptyForm(patients)); setEditId(null); setModalOpen(false); };
 
   const setNextFromInterval = (days) => {
@@ -241,7 +249,7 @@ export default function ConsultingTab({ patients = [], showToast, onSaved }) {
           const isOpen = expandedId === rec.id;
           const days = rec.days_until_next;
           return (
-            <div key={rec.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+            <div key={rec.id} id={`consult-${rec.id}`} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>
                   <span style={{ fontWeight: 700 }}>Dr. {rec.doctor_name}</span>
