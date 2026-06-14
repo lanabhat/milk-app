@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD, getDateRange, todayStr } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const PAYMENT_METHODS = [['cash','Cash'],['card','Card'],['upi','UPI'],['bank','Bank'],['other','Other']];
 const EMPTY_FORM = { date: todayStr(), category: '', description: '', amount: '', store_name: '', paid_by: '', payment_method: 'cash', notes: '' };
@@ -10,22 +11,21 @@ const PRESET_COLORS = ['#16a34a','#22c55e','#f97316','#0369a1','#eab308','#dc262
 const PRESET_ICONS  = ['🛒','🥦','🍎','🥛','🫙','🍖','🍪','🧹','🔧','⚡','💧','📱','📡','💊','📦','🏠','👗','🚌','🍽','🎓'];
 
 export default function HomeSpendsTab({ family, showToast, onSaved }) {
-  const [view, setView]             = useState('spends');   // 'spends' | 'categories'
+  const [view, setView]             = useState('spends');
   const [spends, setSpends]         = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading]       = useState(false);
-  const [showForm, setShowForm]     = useState(false);
+  const [modalOpen, setModalOpen]   = useState(false);
   const [form, setForm]             = useState(EMPTY_FORM);
   const [editId, setEditId]         = useState(null);
   const [saving, setSaving]         = useState(false);
   const [filterCatId, setFilterCatId] = useState('');
   const [period, setPeriod]         = useState('30d');
 
-  // Categories state
-  const [showCatForm, setShowCatForm] = useState(false);
-  const [catForm, setCatForm]         = useState(EMPTY_CAT);
-  const [catEditId, setCatEditId]     = useState(null);
-  const [catSaving, setCatSaving]     = useState(false);
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [catForm, setCatForm]           = useState(EMPTY_CAT);
+  const [catEditId, setCatEditId]       = useState(null);
+  const [catSaving, setCatSaving]       = useState(false);
 
   const activeFamily = family.filter(m => m.is_active);
 
@@ -57,15 +57,16 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openAdd  = () => { setEditId(null); setForm(EMPTY_FORM); setShowForm(true); };
+  const resetForm    = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(false); };
+  const resetCatForm = () => { setCatEditId(null); setCatForm(EMPTY_CAT); setCatModalOpen(false); };
+
   const openEdit = (sp) => {
     setEditId(sp.id);
     setForm({ date: sp.date, category: sp.category ? String(sp.category) : '', description: sp.description, amount: String(sp.amount), store_name: sp.store_name || '', paid_by: sp.paid_by ? String(sp.paid_by) : '', payment_method: sp.payment_method, notes: sp.notes || '' });
-    setShowForm(true);
+    setModalOpen(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSave = async () => {
     if (!form.amount || !form.description.trim()) { showToast('Description and amount required', 'error'); return; }
     setSaving(true);
     const headers = getAuthHeaders();
@@ -77,7 +78,7 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Spend saved');
-      setShowForm(false); setEditId(null); fetchSpends();
+      resetForm(); fetchSpends();
     } catch { showToast('Failed to save', 'error'); }
     finally { setSaving(false); }
   };
@@ -89,12 +90,9 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
     fetchSpends();
   };
 
-  // Category management
-  const openCatAdd  = () => { setCatEditId(null); setCatForm(EMPTY_CAT); setShowCatForm(true); };
-  const openCatEdit = (c) => { setCatEditId(c.id); setCatForm({ name: c.name, icon: c.icon || '', color: c.color || '#64748b' }); setShowCatForm(true); };
+  const openCatEdit = (c) => { setCatEditId(c.id); setCatForm({ name: c.name, icon: c.icon || '', color: c.color || '#64748b' }); setCatModalOpen(true); };
 
-  const handleCatSubmit = async (e) => {
-    e.preventDefault();
+  const handleCatSave = async () => {
     if (!catForm.name.trim()) { showToast('Category name required', 'error'); return; }
     setCatSaving(true);
     const headers = getAuthHeaders();
@@ -105,7 +103,7 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(catForm) });
       if (!res.ok) throw new Error();
       showToast(catEditId ? '✓ Updated' : '✓ Category added');
-      setShowCatForm(false); setCatEditId(null); fetchCategories();
+      resetCatForm(); fetchCategories();
     } catch { showToast('Failed to save', 'error'); }
     finally { setCatSaving(false); }
   };
@@ -118,7 +116,6 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
     fetchCategories();
   };
 
-  // Aggregations for spends view
   const totalAmount = spends.reduce((t, sp) => t + sp.amount, 0);
   const byCategory = spends.reduce((acc, sp) => {
     const k = sp.category || 0;
@@ -128,18 +125,15 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
   const sortedCats = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
   const catMap = Object.fromEntries(categories.map(c => [String(c.id), c]));
 
-  // Group spends by date
   const grouped = spends.reduce((acc, sp) => { (acc[sp.date] = acc[sp.date] || []).push(sp); return acc; }, {});
   const sortedDates = Object.keys(grouped).sort().reverse();
 
-  // Bar chart: daily totals
   const dailyTotals = spends.reduce((acc, sp) => { acc[sp.date] = (acc[sp.date] || 0) + sp.amount; return acc; }, {});
   const chartData   = Object.entries(dailyTotals).sort();
   const maxDay      = Math.max(...Object.values(dailyTotals), 1);
 
   return (
     <div style={s.section}>
-      {/* Spends / Categories toggle */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         <button onClick={() => setView('spends')} style={{ ...s.sessionPill, ...(view === 'spends' ? s.sessionPillActive : {}) }}>💸 Spends</button>
         <button onClick={() => setView('categories')} style={{ ...s.sessionPill, ...(view === 'categories' ? s.sessionPillActive : {}) }}>🏷 Categories ({categories.length})</button>
@@ -149,37 +143,10 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
       {view === 'categories' && (
         <>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-            <button onClick={showCatForm ? () => { setShowCatForm(false); setCatEditId(null); } : openCatAdd}
-              style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showCatForm ? '#64748b' : '#1d4ed8' }}>
-              {showCatForm ? '✕ Cancel' : '+ Add Category'}
+            <button onClick={() => { setCatForm(EMPTY_CAT); setCatEditId(null); setCatModalOpen(true); }} style={s.addBtn}>
+              + Add Category
             </button>
           </div>
-          {showCatForm && (
-            <form onSubmit={handleCatSubmit} style={{ ...s.card, marginBottom: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Name *</label><input style={s.input} value={catForm.name} onChange={e => setCatForm(f => ({ ...f, name: e.target.value }))} placeholder="Vegetables, Groceries, Plumber…" /></div>
-                <div>
-                  <label style={s.fieldLabel}>Icon (emoji)</label>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                    {PRESET_ICONS.map(ic => (
-                      <button key={ic} type="button" onClick={() => setCatForm(f => ({ ...f, icon: ic }))}
-                        style={{ width: 34, height: 34, borderRadius: 6, fontSize: 18, border: catForm.icon === ic ? '2px solid #1d4ed8' : '1px solid #e2e8f0', background: catForm.icon === ic ? '#eff6ff' : 'white', cursor: 'pointer' }}>{ic}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label style={s.fieldLabel}>Color</label>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                    {PRESET_COLORS.map(c => (
-                      <button key={c} type="button" onClick={() => setCatForm(f => ({ ...f, color: c }))}
-                        style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: catForm.color === c ? '3px solid #1e293b' : '2px solid transparent', cursor: 'pointer' }} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <button type="submit" disabled={catSaving} style={{ ...s.primaryBtn, width: '100%', marginTop: 10 }}>{catSaving ? 'Saving…' : catEditId ? '✓ Update' : '✓ Add Category'}</button>
-            </form>
-          )}
           {categories.length === 0 && <p style={s.empty}>No categories yet.</p>}
           {categories.map(c => (
             <div key={c.id} style={{ ...s.card, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10, borderLeft: `4px solid ${c.color || '#64748b'}` }}>
@@ -199,20 +166,17 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
       {/* ── SPENDS VIEW ── */}
       {view === 'spends' && (
         <>
-          {/* Period selector */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
             {[['7d','7 Days'],['30d','30 Days'],['3m','3 Mo'],['6m','6 Mo'],['1y','1 Year']].map(([v, l]) => (
               <button key={v} onClick={() => setPeriod(v)} style={{ ...s.sessionPill, ...(period === v ? s.sessionPillActive : {}) }}>{l}</button>
             ))}
           </div>
 
-          {/* Summary cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(110px,1fr))', gap: 8, marginBottom: 14 }}>
             <div style={{ ...s.card, textAlign: 'center', padding: '10px 6px' }}><div style={{ fontSize: 10, color: '#94a3b8' }}>Total</div><div style={{ fontSize: 16, fontWeight: 700, color: '#dc2626' }}>₹{fmt(totalAmount)}</div></div>
             <div style={{ ...s.card, textAlign: 'center', padding: '10px 6px' }}><div style={{ fontSize: 10, color: '#94a3b8' }}>Entries</div><div style={{ fontSize: 18, fontWeight: 700, color: '#1d4ed8' }}>{spends.length}</div></div>
           </div>
 
-          {/* Category filter chips */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
             <button onClick={() => setFilterCatId('')} style={{ ...s.sessionPill, ...(!filterCatId ? s.sessionPillActive : {}) }}>All</button>
             {categories.map(c => (
@@ -223,7 +187,6 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
             ))}
           </div>
 
-          {/* Category breakdown */}
           {!filterCatId && sortedCats.length > 0 && (
             <div style={{ ...s.card, marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>By Category</div>
@@ -245,7 +208,6 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
             </div>
           )}
 
-          {/* Daily bar chart */}
           {chartData.length > 1 && (
             <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 8px', marginBottom: 14, overflowX: 'auto' }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 70, minWidth: Math.max(300, chartData.length * 14) }}>
@@ -259,49 +221,11 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
             </div>
           )}
 
-          {/* Add button */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
-            <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : openAdd}
-              style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showForm ? '#64748b' : '#16a34a' }}>
-              {showForm ? '✕ Cancel' : '+ Add Spend'}
+            <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); setModalOpen(true); }} style={s.addBtn}>
+              + Add Spend
             </button>
           </div>
-
-          {showForm && (
-            <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit Spend' : 'New Spend'}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div><label style={s.fieldLabel}>Date</label><input style={s.input} type="date" value={form.date} onChange={e => setF('date', e.target.value)} /></div>
-                <div><label style={s.fieldLabel}>Amount (₹) *</label><input style={s.input} type="number" step="0.01" value={form.amount} onChange={e => setF('amount', e.target.value)} /></div>
-                <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Description *</label><input style={s.input} value={form.description} onChange={e => setF('description', e.target.value)} placeholder="Weekly market, Rice bag, Plumber visit…" /></div>
-                <div>
-                  <label style={s.fieldLabel}>Category</label>
-                  <select style={s.input} value={form.category} onChange={e => setF('category', e.target.value)}>
-                    <option value="">— uncategorised —</option>
-                    {categories.map(c => <option key={c.id} value={String(c.id)}>{c.icon || '📦'} {c.name}</option>)}
-                  </select>
-                </div>
-                <div><label style={s.fieldLabel}>Store / Vendor</label><input style={s.input} value={form.store_name} onChange={e => setF('store_name', e.target.value)} placeholder="DMart, Local market…" /></div>
-                <div>
-                  <label style={s.fieldLabel}>Paid By</label>
-                  <select style={s.input} value={form.paid_by} onChange={e => setF('paid_by', e.target.value)}>
-                    <option value="">—</option>
-                    {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={s.fieldLabel}>Payment Method</label>
-                  <select style={s.input} value={form.payment_method} onChange={e => setF('payment_method', e.target.value)}>
-                    {PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Notes</label><input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} /></div>
-              </div>
-              <button type="submit" disabled={saving} style={{ ...s.primaryBtn, width: '100%', marginTop: 10, backgroundColor: '#16a34a' }}>
-                {saving ? 'Saving…' : editId ? '✓ Update' : '✓ Save Spend'}
-              </button>
-            </form>
-          )}
 
           {loading ? <p style={s.empty}>Loading…</p> : spends.length === 0 ? <p style={s.empty}>No spends in this period.</p> : (
             sortedDates.map(date => (
@@ -335,6 +259,64 @@ export default function HomeSpendsTab({ family, showToast, onSaved }) {
           )}
         </>
       )}
+
+      {/* Spend Modal */}
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Spend' : 'Add Spend'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Save Spend'} saving={saving}>
+        <div className="form-grid">
+          <label>Date<input style={s.input} type="date" value={form.date} onChange={e => setF('date', e.target.value)} /></label>
+          <label>Amount (₹) *<input style={s.input} type="number" step="0.01" value={form.amount} onChange={e => setF('amount', e.target.value)} /></label>
+          <label>Description *<input style={s.input} value={form.description} onChange={e => setF('description', e.target.value)} placeholder="Weekly market, Rice bag, Plumber visit…" /></label>
+          <label>
+            Category
+            <select style={s.input} value={form.category} onChange={e => setF('category', e.target.value)}>
+              <option value="">— uncategorised —</option>
+              {categories.map(c => <option key={c.id} value={String(c.id)}>{c.icon || '📦'} {c.name}</option>)}
+            </select>
+          </label>
+          <label>Store / Vendor<input style={s.input} value={form.store_name} onChange={e => setF('store_name', e.target.value)} placeholder="DMart, Local market…" /></label>
+          <label>
+            Paid By
+            <select style={s.input} value={form.paid_by} onChange={e => setF('paid_by', e.target.value)}>
+              <option value="">—</option>
+              {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
+            </select>
+          </label>
+          <label>
+            Payment Method
+            <select style={s.input} value={form.payment_method} onChange={e => setF('payment_method', e.target.value)}>
+              {PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          <label>Notes<input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} /></label>
+        </div>
+      </Modal>
+
+      {/* Category Modal */}
+      <Modal open={catModalOpen} onClose={resetCatForm} title={catEditId ? 'Edit Category' : 'Add Category'}
+        onSave={handleCatSave} saveLabel={catSaving ? 'Saving…' : catEditId ? 'Update' : 'Add Category'} saving={catSaving}>
+        <div className="form-grid">
+          <label>Name *<input style={s.input} value={catForm.name} onChange={e => setCatForm(f => ({ ...f, name: e.target.value }))} placeholder="Vegetables, Groceries, Plumber…" /></label>
+          <label>
+            Icon (emoji)
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+              {PRESET_ICONS.map(ic => (
+                <button key={ic} type="button" onClick={() => setCatForm(f => ({ ...f, icon: ic }))}
+                  style={{ width: 34, height: 34, borderRadius: 6, fontSize: 18, border: catForm.icon === ic ? '2px solid #1d4ed8' : '1px solid #e2e8f0', background: catForm.icon === ic ? '#eff6ff' : 'white', cursor: 'pointer' }}>{ic}</button>
+              ))}
+            </div>
+          </label>
+          <label>
+            Color
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+              {PRESET_COLORS.map(c => (
+                <button key={c} type="button" onClick={() => setCatForm(f => ({ ...f, color: c }))}
+                  style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: catForm.color === c ? '3px solid #1e293b' : '2px solid transparent', cursor: 'pointer' }} />
+              ))}
+            </div>
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

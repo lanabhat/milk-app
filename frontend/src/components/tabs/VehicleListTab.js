@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmtD } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const FUEL_LABELS  = { petrol: 'Petrol', diesel: 'Diesel', cng: 'CNG', electric: 'Electric', hybrid: 'Hybrid' };
 const TYPE_LABELS  = { car: 'Car', bike: 'Bike', scooter: 'Scooter', truck: 'Truck', other: 'Other' };
@@ -19,7 +20,7 @@ function statusBadge(days, label, warnDays = 30) {
 }
 
 export default function VehicleListTab({ vehicles, showToast, onSaved, selectedVehicleId, onSelectVehicle }) {
-  const [showForm, setShowForm]   = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [editId, setEditId]       = useState(null);
   const [saving, setSaving]       = useState(false);
@@ -27,8 +28,9 @@ export default function VehicleListTab({ vehicles, showToast, onSaved, selectedV
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const resetForm = () => { setForm(EMPTY_FORM); setEditId(null); setModalOpen(false); };
+
+  const handleSave = async () => {
     if (!form.make.trim() || !form.model.trim() || !form.registration_no.trim()) {
       showToast('Make, model, and registration are required', 'error'); return;
     }
@@ -42,7 +44,7 @@ export default function VehicleListTab({ vehicles, showToast, onSaved, selectedV
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Vehicle updated' : '✓ Vehicle added');
-      setShowForm(false); setEditId(null); setForm(EMPTY_FORM); onSaved();
+      resetForm(); onSaved();
     } catch { showToast('Failed to save vehicle', 'error'); }
     finally { setSaving(false); }
   };
@@ -50,7 +52,7 @@ export default function VehicleListTab({ vehicles, showToast, onSaved, selectedV
   const handleEdit = (v) => {
     setEditId(v.id);
     setForm({ make: v.make, model: v.model, year: v.year || '', registration_no: v.registration_no, color: v.color, vin_number: v.vin_number, fuel_type: v.fuel_type, vehicle_type: v.vehicle_type, purchase_date: v.purchase_date || '', image_url: v.image_url || '', notes: v.notes });
-    setShowForm(true);
+    setModalOpen(true);
   };
 
   const handleDeactivate = async (v) => {
@@ -116,46 +118,12 @@ export default function VehicleListTab({ vehicles, showToast, onSaved, selectedV
     <div style={s.section}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <h3 style={{ ...s.sectionTitle, margin: 0, flex: 1 }}>Fleet ({activeVehicles.length})</h3>
-        <button onClick={() => { setShowForm(v => !v); setEditId(null); setForm(EMPTY_FORM); }}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showForm && !editId ? '#64748b' : '#1d4ed8' }}>
-          {showForm && !editId ? '✕ Cancel' : '+ Add Vehicle'}
+        <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); setModalOpen(true); }} style={s.addBtn}>
+          + Add Vehicle
         </button>
       </div>
 
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit Vehicle' : 'New Vehicle'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div><label style={s.fieldLabel}>Make *</label><input style={s.input} value={form.make} onChange={e => setF('make', e.target.value)} placeholder="Honda" /></div>
-            <div><label style={s.fieldLabel}>Model *</label><input style={s.input} value={form.model} onChange={e => setF('model', e.target.value)} placeholder="Activa 6G" /></div>
-            <div><label style={s.fieldLabel}>Registration No *</label><input style={s.input} value={form.registration_no} onChange={e => setF('registration_no', e.target.value)} placeholder="KA 01 AB 1234" /></div>
-            <div><label style={s.fieldLabel}>Year</label><input style={s.input} type="number" value={form.year} onChange={e => setF('year', e.target.value)} placeholder="2022" /></div>
-            <div><label style={s.fieldLabel}>Color</label><input style={s.input} value={form.color} onChange={e => setF('color', e.target.value)} placeholder="Pearl White" /></div>
-            <div><label style={s.fieldLabel}>VIN / Chassis No</label><input style={s.input} value={form.vin_number} onChange={e => setF('vin_number', e.target.value)} /></div>
-            <div>
-              <label style={s.fieldLabel}>Vehicle Type</label>
-              <select style={s.input} value={form.vehicle_type} onChange={e => setF('vehicle_type', e.target.value)}>
-                {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Fuel Type</label>
-              <select style={s.input} value={form.fuel_type} onChange={e => setF('fuel_type', e.target.value)}>
-                {Object.entries(FUEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div><label style={s.fieldLabel}>Purchase Date</label><input style={s.input} type="date" value={form.purchase_date} onChange={e => setF('purchase_date', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Image URL (optional)</label><input style={s.input} value={form.image_url} onChange={e => setF('image_url', e.target.value)} placeholder="https://..." /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Notes</label><input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} /></div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button type="submit" disabled={saving} style={{ ...s.primaryBtn, flex: 1 }}>{saving ? 'Saving…' : editId ? '✓ Update' : '✓ Add Vehicle'}</button>
-            <button type="button" onClick={() => { setShowForm(false); setEditId(null); }} style={{ ...s.primaryBtn, backgroundColor: '#64748b' }}>Cancel</button>
-          </div>
-        </form>
-      )}
-
-      {activeVehicles.length === 0 && !showForm && <p style={s.empty}>No vehicles yet. Add your first vehicle above.</p>}
+      {activeVehicles.length === 0 && <p style={s.empty}>No vehicles yet. Add your first vehicle above.</p>}
       {activeVehicles.map(v => <VehicleCard key={v.id} v={v} />)}
 
       {inactiveVehicles.length > 0 && (
@@ -164,6 +132,33 @@ export default function VehicleListTab({ vehicles, showToast, onSaved, selectedV
           {inactiveVehicles.map(v => <VehicleCard key={v.id} v={v} />)}
         </div>
       )}
+
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Vehicle' : 'Add Vehicle'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Add Vehicle'} saving={saving}>
+        <div className="form-grid">
+          <label>Make *<input style={s.input} value={form.make} onChange={e => setF('make', e.target.value)} placeholder="Honda" /></label>
+          <label>Model *<input style={s.input} value={form.model} onChange={e => setF('model', e.target.value)} placeholder="Activa 6G" /></label>
+          <label>Registration No *<input style={s.input} value={form.registration_no} onChange={e => setF('registration_no', e.target.value)} placeholder="KA 01 AB 1234" /></label>
+          <label>Year<input style={s.input} type="number" value={form.year} onChange={e => setF('year', e.target.value)} placeholder="2022" /></label>
+          <label>Color<input style={s.input} value={form.color} onChange={e => setF('color', e.target.value)} placeholder="Pearl White" /></label>
+          <label>VIN / Chassis No<input style={s.input} value={form.vin_number} onChange={e => setF('vin_number', e.target.value)} /></label>
+          <label>
+            Vehicle Type
+            <select style={s.input} value={form.vehicle_type} onChange={e => setF('vehicle_type', e.target.value)}>
+              {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          <label>
+            Fuel Type
+            <select style={s.input} value={form.fuel_type} onChange={e => setF('fuel_type', e.target.value)}>
+              {Object.entries(FUEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          <label>Purchase Date<input style={s.input} type="date" value={form.purchase_date} onChange={e => setF('purchase_date', e.target.value)} /></label>
+          <label>Image URL (optional)<input style={s.input} value={form.image_url} onChange={e => setF('image_url', e.target.value)} placeholder="https://..." /></label>
+          <label>Notes<input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} /></label>
+        </div>
+      </Modal>
     </div>
   );
 }

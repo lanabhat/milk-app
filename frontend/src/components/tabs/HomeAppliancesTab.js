@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const CAT_ICON  = { kitchen:'🍳', laundry:'🧺', entertainment:'📺', climate:'❄️', computing:'💻', mobile:'📱', lighting:'💡', security:'🔒', other:'🔌' };
 const CAT_COLOR = { kitchen:'#f97316', laundry:'#0369a1', entertainment:'#7e22ce', climate:'#0ea5e9', computing:'#1d4ed8', mobile:'#be185d', lighting:'#eab308', security:'#64748b', other:'#475569' };
@@ -19,23 +20,23 @@ function StatusBadge({ days, label, warnDays = 30 }) {
 }
 
 export default function HomeAppliancesTab({ appliances, selectedApplianceId, onSelectAppliance, showToast, onSaved }) {
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState(EMPTY_FORM);
-  const [editId, setEditId]     = useState(null);
-  const [saving, setSaving]     = useState(false);
-  const [expandId, setExpandId] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm]           = useState(EMPTY_FORM);
+  const [editId, setEditId]       = useState(null);
+  const [saving, setSaving]       = useState(false);
+  const [expandId, setExpandId]   = useState(null);
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openAdd  = () => { setEditId(null); setForm(EMPTY_FORM); setShowForm(true); };
+  const resetForm = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(false); };
+
   const openEdit = (a) => {
     setEditId(a.id);
     setForm({ name: a.name, brand: a.brand || '', model_number: a.model_number || '', category: a.category, purchase_date: a.purchase_date || '', purchase_price: a.purchase_price != null ? String(a.purchase_price) : '', warranty_expiry: a.warranty_expiry || '', amc_expiry: a.amc_expiry || '', serial_number: a.serial_number || '', location: a.location || '', image_url: a.image_url || '', notes: a.notes || '' });
-    setShowForm(true);
+    setModalOpen(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSave = async () => {
     if (!form.name.trim()) { showToast('Name is required', 'error'); return; }
     setSaving(true);
     const headers = getAuthHeaders();
@@ -47,7 +48,7 @@ export default function HomeAppliancesTab({ appliances, selectedApplianceId, onS
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Appliance added');
-      setShowForm(false); setEditId(null); onSaved();
+      resetForm(); onSaved();
     } catch { showToast('Failed to save', 'error'); }
     finally { setSaving(false); }
   };
@@ -110,42 +111,12 @@ export default function HomeAppliancesTab({ appliances, selectedApplianceId, onS
     <div style={s.section}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <h3 style={{ ...s.sectionTitle, margin: 0, flex: 1 }}>Appliances ({active.length})</h3>
-        <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : openAdd}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showForm ? '#64748b' : '#1d4ed8' }}>
-          {showForm ? '✕ Cancel' : '+ Add Appliance'}
+        <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); setModalOpen(true); }} style={s.addBtn}>
+          + Add Appliance
         </button>
       </div>
 
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit Appliance' : 'New Appliance'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Name *</label><input style={s.input} value={form.name} onChange={e => setF('name', e.target.value)} placeholder="Samsung 253L Double Door Fridge" /></div>
-            <div><label style={s.fieldLabel}>Brand</label><input style={s.input} value={form.brand} onChange={e => setF('brand', e.target.value)} placeholder="Samsung, LG, Sony…" /></div>
-            <div><label style={s.fieldLabel}>Model Number</label><input style={s.input} value={form.model_number} onChange={e => setF('model_number', e.target.value)} /></div>
-            <div>
-              <label style={s.fieldLabel}>Category</label>
-              <select style={s.input} value={form.category} onChange={e => setF('category', e.target.value)}>
-                {Object.entries(CAT_LABELS).map(([v, l]) => <option key={v} value={v}>{CAT_ICON[v]} {l}</option>)}
-              </select>
-            </div>
-            <div><label style={s.fieldLabel}>Location</label><input style={s.input} value={form.location} onChange={e => setF('location', e.target.value)} placeholder="Kitchen, Bedroom 1…" /></div>
-            <div><label style={s.fieldLabel}>Purchase Date</label><input style={s.input} type="date" value={form.purchase_date} onChange={e => setF('purchase_date', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Purchase Price (₹)</label><input style={s.input} type="number" value={form.purchase_price} onChange={e => setF('purchase_price', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Warranty Expiry</label><input style={s.input} type="date" value={form.warranty_expiry} onChange={e => setF('warranty_expiry', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>AMC Expiry</label><input style={s.input} type="date" value={form.amc_expiry} onChange={e => setF('amc_expiry', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Serial Number</label><input style={s.input} value={form.serial_number} onChange={e => setF('serial_number', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Image URL</label><input style={s.input} value={form.image_url} onChange={e => setF('image_url', e.target.value)} placeholder="https://…" /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Notes</label><textarea style={{ ...s.input, height: 50 }} value={form.notes} onChange={e => setF('notes', e.target.value)} /></div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button type="submit" disabled={saving} style={{ ...s.primaryBtn, flex: 1 }}>{saving ? 'Saving…' : editId ? '✓ Update' : '✓ Add Appliance'}</button>
-            <button type="button" onClick={() => { setShowForm(false); setEditId(null); }} style={{ ...s.primaryBtn, backgroundColor: '#64748b' }}>Cancel</button>
-          </div>
-        </form>
-      )}
-
-      {active.length === 0 && !showForm && <p style={s.empty}>No appliances yet. Add your first appliance above.</p>}
+      {active.length === 0 && <p style={s.empty}>No appliances yet. Add your first appliance above.</p>}
       {active.map(a => <ApplianceCard key={a.id} a={a} />)}
 
       {inactive.length > 0 && (
@@ -154,6 +125,29 @@ export default function HomeAppliancesTab({ appliances, selectedApplianceId, onS
           {inactive.map(a => <ApplianceCard key={a.id} a={a} />)}
         </div>
       )}
+
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Appliance' : 'Add Appliance'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Add Appliance'} saving={saving}>
+        <div className="form-grid">
+          <label>Name *<input style={s.input} value={form.name} onChange={e => setF('name', e.target.value)} placeholder="Samsung 253L Double Door Fridge" /></label>
+          <label>Brand<input style={s.input} value={form.brand} onChange={e => setF('brand', e.target.value)} placeholder="Samsung, LG, Sony…" /></label>
+          <label>Model Number<input style={s.input} value={form.model_number} onChange={e => setF('model_number', e.target.value)} /></label>
+          <label>
+            Category
+            <select style={s.input} value={form.category} onChange={e => setF('category', e.target.value)}>
+              {Object.entries(CAT_LABELS).map(([v, l]) => <option key={v} value={v}>{CAT_ICON[v]} {l}</option>)}
+            </select>
+          </label>
+          <label>Location<input style={s.input} value={form.location} onChange={e => setF('location', e.target.value)} placeholder="Kitchen, Bedroom 1…" /></label>
+          <label>Purchase Date<input style={s.input} type="date" value={form.purchase_date} onChange={e => setF('purchase_date', e.target.value)} /></label>
+          <label>Purchase Price (₹)<input style={s.input} type="number" value={form.purchase_price} onChange={e => setF('purchase_price', e.target.value)} /></label>
+          <label>Warranty Expiry<input style={s.input} type="date" value={form.warranty_expiry} onChange={e => setF('warranty_expiry', e.target.value)} /></label>
+          <label>AMC Expiry<input style={s.input} type="date" value={form.amc_expiry} onChange={e => setF('amc_expiry', e.target.value)} /></label>
+          <label>Serial Number<input style={s.input} value={form.serial_number} onChange={e => setF('serial_number', e.target.value)} /></label>
+          <label>Image URL<input style={s.input} value={form.image_url} onChange={e => setF('image_url', e.target.value)} placeholder="https://…" /></label>
+          <label>Notes<textarea style={{ ...s.input, minHeight: 60, resize: 'vertical' }} value={form.notes} onChange={e => setF('notes', e.target.value)} /></label>
+        </div>
+      </Modal>
     </div>
   );
 }

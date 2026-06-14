@@ -2,16 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD, todayStr } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const EMPTY_FORM = { date: todayStr(), fuel_amount: '', price_per_litre: '', odometer: '', full_tank: true, fuel_station: '', notes: '' };
 
 export default function VehicleFuelTab({ vehicles, selectedVehicleId, showToast, onSaved }) {
-  const [logs, setLogs]         = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState(EMPTY_FORM);
-  const [editId, setEditId]     = useState(null);
-  const [saving, setSaving]     = useState(false);
+  const [logs, setLogs]           = useState([]);
+  const [loading, setLoading]     = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm]           = useState(EMPTY_FORM);
+  const [editId, setEditId]       = useState(null);
+  const [saving, setSaving]       = useState(false);
 
   const fetchLogs = useCallback(async () => {
     if (!selectedVehicleId) return;
@@ -29,15 +30,15 @@ export default function VehicleFuelTab({ vehicles, selectedVehicleId, showToast,
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openAdd = () => { setEditId(null); setForm(EMPTY_FORM); setShowForm(true); };
+  const resetForm = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(false); };
+
   const openEdit = (log) => {
     setEditId(log.id);
     setForm({ date: log.date, fuel_amount: String(log.fuel_amount), price_per_litre: String(log.price_per_litre), odometer: String(log.odometer), full_tank: log.full_tank, fuel_station: log.fuel_station || '', notes: log.notes || '' });
-    setShowForm(true);
+    setModalOpen(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSave = async () => {
     if (!form.fuel_amount || !form.price_per_litre || !form.odometer) {
       showToast('Fuel amount, price, and odometer are required', 'error'); return;
     }
@@ -52,7 +53,7 @@ export default function VehicleFuelTab({ vehicles, selectedVehicleId, showToast,
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Fuel log saved');
-      setShowForm(false); setEditId(null); setForm(EMPTY_FORM); fetchLogs(); onSaved();
+      resetForm(); fetchLogs(); onSaved();
     } catch { showToast('Failed to save', 'error'); }
     finally { setSaving(false); }
   };
@@ -78,10 +79,10 @@ export default function VehicleFuelTab({ vehicles, selectedVehicleId, showToast,
     <div style={s.section}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 14 }}>
         {[
-          { label: 'Total Litres',    value: totalLitres.toFixed(1) + ' L',                       color: '#f97316' },
-          { label: 'Total Fuel Cost', value: '₹' + fmt(totalCost),                                color: '#dc2626' },
-          { label: 'Avg Price/L',     value: avgPrice > 0 ? '₹' + fmt(avgPrice) : '—',            color: '#64748b' },
-          { label: 'Avg Mileage',     value: avgMileage > 0 ? avgMileage.toFixed(1) + ' km/L' : '—', color: '#16a34a' },
+          { label: 'Total Litres',    value: totalLitres.toFixed(1) + ' L',                            color: '#f97316' },
+          { label: 'Total Fuel Cost', value: '₹' + fmt(totalCost),                                     color: '#dc2626' },
+          { label: 'Avg Price/L',     value: avgPrice > 0 ? '₹' + fmt(avgPrice) : '—',                 color: '#64748b' },
+          { label: 'Avg Mileage',     value: avgMileage > 0 ? avgMileage.toFixed(1) + ' km/L' : '—',   color: '#16a34a' },
           { label: 'Odometer',        value: selectedVehicle ? (selectedVehicle.current_odometer?.toLocaleString('en-IN') + ' km') : '—', color: '#1d4ed8' },
         ].map(c => (
           <div key={c.label} style={{ ...s.card, textAlign: 'center', padding: '10px 6px' }}>
@@ -122,34 +123,10 @@ export default function VehicleFuelTab({ vehicles, selectedVehicleId, showToast,
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : openAdd}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showForm ? '#64748b' : '#f97316' }}>
-          {showForm ? '✕ Cancel' : '⛽ Log Fuel Fill'}
+        <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); setModalOpen(true); }} style={s.addBtn}>
+          ⛽ Log Fuel Fill
         </button>
       </div>
-
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit Fuel Log' : 'New Fuel Fill'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div><label style={s.fieldLabel}>Date</label><input style={s.input} type="date" value={form.date} onChange={e => setF('date', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Odometer (km)</label><input style={s.input} type="number" value={form.odometer} onChange={e => setF('odometer', e.target.value)} placeholder="12500" /></div>
-            <div><label style={s.fieldLabel}>Fuel Amount (L)</label><input style={s.input} type="number" step="0.01" value={form.fuel_amount} onChange={e => setF('fuel_amount', e.target.value)} placeholder="5.5" /></div>
-            <div><label style={s.fieldLabel}>Price per Litre (₹)</label><input style={s.input} type="number" step="0.01" value={form.price_per_litre} onChange={e => setF('price_per_litre', e.target.value)} placeholder="106.5" /></div>
-            {form.fuel_amount && form.price_per_litre && (
-              <div style={{ gridColumn: '1 / -1', padding: '6px 10px', background: '#f0fdf4', borderRadius: 6, fontSize: 13, fontWeight: 700, color: '#16a34a' }}>
-                Total: ₹{fmt(parseFloat(form.fuel_amount) * parseFloat(form.price_per_litre))}
-              </div>
-            )}
-            <div><label style={s.fieldLabel}>Fuel Station</label><input style={s.input} value={form.fuel_station} onChange={e => setF('fuel_station', e.target.value)} placeholder="HP, BPCL…" /></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><label style={{ ...s.fieldLabel, margin: 0 }}>Full Tank</label><input type="checkbox" checked={form.full_tank} onChange={e => setF('full_tank', e.target.checked)} style={{ width: 18, height: 18 }} /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Notes</label><input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} /></div>
-          </div>
-          <button type="submit" disabled={saving} style={{ ...s.primaryBtn, width: '100%', marginTop: 8, backgroundColor: '#f97316' }}>
-            {saving ? 'Saving…' : editId ? '✓ Update' : '✓ Save Fuel Log'}
-          </button>
-        </form>
-      )}
 
       {loading ? <p style={s.empty}>Loading…</p> : logs.length === 0 ? <p style={s.empty}>No fuel logs yet.</p> : (
         logs.map(log => (
@@ -173,6 +150,27 @@ export default function VehicleFuelTab({ vehicles, selectedVehicleId, showToast,
           </div>
         ))
       )}
+
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Fuel Log' : 'Log Fuel Fill'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Save'} saving={saving}>
+        <div className="form-grid">
+          <label>Date<input style={s.input} type="date" value={form.date} onChange={e => setF('date', e.target.value)} /></label>
+          <label>Odometer (km)<input style={s.input} type="number" value={form.odometer} onChange={e => setF('odometer', e.target.value)} placeholder="12500" /></label>
+          <label>Fuel Amount (L)<input style={s.input} type="number" step="0.01" value={form.fuel_amount} onChange={e => setF('fuel_amount', e.target.value)} placeholder="5.5" /></label>
+          <label>Price per Litre (₹)<input style={s.input} type="number" step="0.01" value={form.price_per_litre} onChange={e => setF('price_per_litre', e.target.value)} placeholder="106.5" /></label>
+          {form.fuel_amount && form.price_per_litre && (
+            <div style={{ padding: '6px 10px', background: '#f0fdf4', borderRadius: 6, fontSize: 13, fontWeight: 700, color: '#16a34a' }}>
+              Total: ₹{fmt(parseFloat(form.fuel_amount) * parseFloat(form.price_per_litre))}
+            </div>
+          )}
+          <label>Fuel Station<input style={s.input} value={form.fuel_station} onChange={e => setF('fuel_station', e.target.value)} placeholder="HP, BPCL…" /></label>
+          <label style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <input type="checkbox" checked={form.full_tank} onChange={e => setF('full_tank', e.target.checked)} style={{ width: 18, height: 18, minHeight: 'unset' }} />
+            Full Tank
+          </label>
+          <label>Notes<input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} /></label>
+        </div>
+      </Modal>
     </div>
   );
 }

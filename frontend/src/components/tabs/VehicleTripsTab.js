@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmtD, todayStr } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const EMPTY_FORM = { trip_date: todayStr(), title: '', from_location: '', to_location: '', start_odometer: '', end_odometer: '', distance_km: '', purpose: '', image_url: '', notes: '', is_draft: false };
 
 export default function VehicleTripsTab({ vehicles, selectedVehicleId, showToast, onSaved }) {
   const [trips, setTrips]         = useState([]);
   const [loading, setLoading]     = useState(false);
-  const [showForm, setShowForm]   = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [saving, setSaving]       = useState(false);
   const [editId, setEditId]       = useState(null);
@@ -33,20 +34,21 @@ export default function VehicleTripsTab({ vehicles, selectedVehicleId, showToast
   const computedDist = form.start_odometer && form.end_odometer
     ? Math.max(0, parseFloat(form.end_odometer) - parseFloat(form.start_odometer)).toFixed(1) : null;
 
+  const resetForm = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(false); };
+
   const openAdd = (draft = false) => {
     setEditId(null);
     setForm({ ...EMPTY_FORM, is_draft: draft, title: draft ? `Trip on ${todayStr()}` : '' });
-    setShowForm(true);
+    setModalOpen(true);
   };
 
   const openEdit = (trip) => {
     setEditId(trip.id);
     setForm({ trip_date: trip.trip_date, title: trip.title, from_location: trip.from_location || '', to_location: trip.to_location || '', start_odometer: trip.start_odometer || '', end_odometer: trip.end_odometer || '', distance_km: trip.distance_km || '', purpose: trip.purpose || '', image_url: trip.image_url || '', notes: trip.notes || '', is_draft: trip.is_draft });
-    setShowForm(true); setExpandId(null);
+    setModalOpen(true); setExpandId(null);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSave = async () => {
     if (!form.title.trim() && !form.is_draft) { showToast('Title required', 'error'); return; }
     setSaving(true);
     const headers = getAuthHeaders();
@@ -66,7 +68,7 @@ export default function VehicleTripsTab({ vehicles, selectedVehicleId, showToast
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Trip saved');
-      setShowForm(false); setEditId(null); setForm(EMPTY_FORM); fetchTrips(); onSaved();
+      resetForm(); fetchTrips(); onSaved();
     } catch { showToast('Failed to save trip', 'error'); }
     finally { setSaving(false); }
   };
@@ -99,42 +101,9 @@ export default function VehicleTripsTab({ vehicles, selectedVehicleId, showToast
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : () => openAdd(false)}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showForm && !form.is_draft ? '#64748b' : '#1d4ed8' }}>
-          {showForm && !form.is_draft ? '✕ Cancel' : '🗺️ Log Trip'}
-        </button>
-        <button onClick={() => openAdd(true)} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: '#f59e0b' }}>
-          📸 Quick Capture
-        </button>
+        <button onClick={() => openAdd(false)} style={s.addBtn}>🗺️ Log Trip</button>
+        <button onClick={() => openAdd(true)} style={{ ...s.addBtn, backgroundColor: '#f59e0b' }}>📸 Quick Capture</button>
       </div>
-
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14, borderLeft: form.is_draft ? '4px solid #f59e0b' : '4px solid #1d4ed8' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
-            {form.is_draft ? '📸 Quick Capture' : editId ? 'Edit Trip' : 'Log Trip'}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div><label style={s.fieldLabel}>Date</label><input style={s.input} type="date" value={form.trip_date} onChange={e => setF('trip_date', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Title</label><input style={s.input} value={form.title} onChange={e => setF('title', e.target.value)} placeholder="Bangalore to Mysore" /></div>
-            {!form.is_draft && (
-              <>
-                <div><label style={s.fieldLabel}>From</label><input style={s.input} value={form.from_location} onChange={e => setF('from_location', e.target.value)} /></div>
-                <div><label style={s.fieldLabel}>To</label><input style={s.input} value={form.to_location} onChange={e => setF('to_location', e.target.value)} /></div>
-                <div><label style={s.fieldLabel}>Start Odometer</label><input style={s.input} type="number" value={form.start_odometer} onChange={e => setF('start_odometer', e.target.value)} /></div>
-                <div><label style={s.fieldLabel}>End Odometer</label><input style={s.input} type="number" value={form.end_odometer} onChange={e => setF('end_odometer', e.target.value)} /></div>
-                {computedDist && <div style={{ gridColumn: '1 / -1', padding: '6px 10px', background: '#f0fdf4', borderRadius: 6, fontSize: 13, fontWeight: 700, color: '#16a34a' }}>Distance: {computedDist} km</div>}
-                <div><label style={s.fieldLabel}>Distance km (manual)</label><input style={s.input} type="number" value={form.distance_km} onChange={e => setF('distance_km', e.target.value)} /></div>
-                <div><label style={s.fieldLabel}>Purpose</label><input style={s.input} value={form.purpose} onChange={e => setF('purpose', e.target.value)} /></div>
-              </>
-            )}
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Image URL</label><input style={s.input} value={form.image_url} onChange={e => setF('image_url', e.target.value)} placeholder="https://…" /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Notes</label><textarea style={{ ...s.input, height: 50 }} value={form.notes} onChange={e => setF('notes', e.target.value)} /></div>
-          </div>
-          <button type="submit" disabled={saving} style={{ ...s.primaryBtn, width: '100%', marginTop: 10, backgroundColor: form.is_draft ? '#f59e0b' : '#1d4ed8' }}>
-            {saving ? 'Saving…' : editId ? '✓ Update' : form.is_draft ? '📸 Save Draft' : '✓ Save Trip'}
-          </button>
-        </form>
-      )}
 
       {loading ? <p style={s.empty}>Loading…</p> : trips.length === 0 ? <p style={s.empty}>No trips logged yet.</p> : (
         trips.map(trip => {
@@ -170,6 +139,32 @@ export default function VehicleTripsTab({ vehicles, selectedVehicleId, showToast
           );
         })
       )}
+
+      <Modal open={modalOpen} onClose={resetForm}
+        title={editId ? (form.is_draft ? 'Fill Trip Details' : 'Edit Trip') : (form.is_draft ? '📸 Quick Capture' : 'Log Trip')}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update' : form.is_draft ? 'Save Draft' : 'Save Trip'} saving={saving}>
+        <div className="form-grid">
+          <label>Date<input style={s.input} type="date" value={form.trip_date} onChange={e => setF('trip_date', e.target.value)} /></label>
+          <label>Title<input style={s.input} value={form.title} onChange={e => setF('title', e.target.value)} placeholder="Bangalore to Mysore" /></label>
+          {!form.is_draft && (
+            <>
+              <label>From<input style={s.input} value={form.from_location} onChange={e => setF('from_location', e.target.value)} /></label>
+              <label>To<input style={s.input} value={form.to_location} onChange={e => setF('to_location', e.target.value)} /></label>
+              <label>Start Odometer<input style={s.input} type="number" value={form.start_odometer} onChange={e => setF('start_odometer', e.target.value)} /></label>
+              <label>End Odometer<input style={s.input} type="number" value={form.end_odometer} onChange={e => setF('end_odometer', e.target.value)} /></label>
+              {computedDist && (
+                <div style={{ padding: '6px 10px', background: '#f0fdf4', borderRadius: 6, fontSize: 13, fontWeight: 700, color: '#16a34a' }}>
+                  Distance: {computedDist} km
+                </div>
+              )}
+              <label>Distance km (manual)<input style={s.input} type="number" value={form.distance_km} onChange={e => setF('distance_km', e.target.value)} /></label>
+              <label>Purpose<input style={s.input} value={form.purpose} onChange={e => setF('purpose', e.target.value)} /></label>
+            </>
+          )}
+          <label>Image URL<input style={s.input} value={form.image_url} onChange={e => setF('image_url', e.target.value)} placeholder="https://…" /></label>
+          <label>Notes<textarea style={{ ...s.input, minHeight: 60, resize: 'vertical' }} value={form.notes} onChange={e => setF('notes', e.target.value)} /></label>
+        </div>
+      </Modal>
     </div>
   );
 }

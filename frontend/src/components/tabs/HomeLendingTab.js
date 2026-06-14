@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD, todayStr } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const STATUS_COLOR = { outstanding: '#dc2626', partial: '#f59e0b', settled: '#16a34a' };
 const STATUS_BG    = { outstanding: '#fee2e2', partial: '#fef3c7', settled: '#dcfce7' };
@@ -13,7 +14,7 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
   const [view, setView]           = useState('active');
   const [lendings, setLendings]   = useState([]);
   const [loading, setLoading]     = useState(false);
-  const [showForm, setShowForm]   = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [editId, setEditId]       = useState(null);
   const [saving, setSaving]       = useState(false);
@@ -25,14 +26,14 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
 
   // Report state
   const [showReport, setShowReport]           = useState(false);
-  const [reportContacts, setReportContacts]   = useState([]);  // array of contact keys
+  const [reportContacts, setReportContacts]   = useState([]);
   const [reportStatus, setReportStatus]       = useState('all');
 
   // Bulk settle state
-  const [selectedIds, setSelectedIds]       = useState(new Set());
-  const [showBulkSettle, setShowBulkSettle] = useState(false);
-  const [bulkForm, setBulkForm]             = useState({ date: todayStr(), amount: '', notes: '' });
-  const [bulkSaving, setBulkSaving]         = useState(false);
+  const [selectedIds, setSelectedIds]         = useState(new Set());
+  const [bulkModalOpen, setBulkModalOpen]     = useState(false);
+  const [bulkForm, setBulkForm]               = useState({ date: todayStr(), amount: '', notes: '' });
+  const [bulkSaving, setBulkSaving]           = useState(false);
 
   const activeFamily = family.filter(m => m.is_active);
 
@@ -51,15 +52,16 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openAdd  = () => { setEditId(null); setForm(EMPTY_FORM); setShowForm(true); };
+  const openAdd  = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(true); };
   const openEdit = (l) => {
     setEditId(l.id);
     setForm({ contact: l.contact ? String(l.contact) : '', contact_name: l.contact_name || '', date: l.date, description: l.description, amount: String(l.amount), notes: l.notes || '' });
-    setShowForm(true); setExpandId(null);
+    setModalOpen(true); setExpandId(null);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const resetForm = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(false); };
+
+  const handleSave = async () => {
     if (!form.description.trim() || !form.amount) { showToast('Description and amount required', 'error'); return; }
     if (!form.contact && !form.contact_name.trim()) { showToast('Select a contact or enter a name', 'error'); return; }
     setSaving(true);
@@ -72,7 +74,7 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Lending recorded');
-      setShowForm(false); setEditId(null); fetchLendings();
+      resetForm(); fetchLendings();
     } catch { showToast('Failed to save', 'error'); }
     finally { setSaving(false); }
   };
@@ -111,7 +113,7 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
     fetchLendings();
   };
 
-  // ── Derived data (must be before bulk settlement) ────────────────────────
+  // Derived data
   const filtered   = lendings.filter(l => !filterContact || (l.contact ? `id:${l.contact}` : `name:${l.contact_name}`) === filterContact);
   const active     = filtered.filter(l => l.status !== 'settled');
   const history    = filtered.filter(l => l.status === 'settled');
@@ -127,7 +129,7 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
     outstanding: filtered.filter(l => l.status !== 'settled').reduce((t, l) => t + (l.outstanding || 0), 0),
   } : null;
 
-  // ── Bulk Settlement ───────────────────────────────────────────────────────
+  // Bulk Settlement
   const toggleSelect = (id) => setSelectedIds(prev => {
     const n = new Set(prev);
     n.has(id) ? n.delete(id) : n.add(id);
@@ -137,7 +139,6 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
   const selectedLendings = active.filter(l => selectedIds.has(l.id)).sort((a, b) => a.date.localeCompare(b.date));
   const totalSelectedOutstanding = selectedLendings.reduce((t, l) => t + (l.outstanding || 0), 0);
 
-  // Live distribution preview
   const bulkDistribution = (() => {
     const amount = parseFloat(bulkForm.amount) || 0;
     let remaining = Math.min(amount, totalSelectedOutstanding);
@@ -164,14 +165,14 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
       }
       showToast(`✓ Settlement applied across ${applied} entr${applied === 1 ? 'y' : 'ies'}`);
       setSelectedIds(new Set());
-      setShowBulkSettle(false);
+      setBulkModalOpen(false);
       setBulkForm({ date: todayStr(), amount: '', notes: '' });
       fetchLendings();
     } catch (err) { showToast(err.message || 'Partial failure — please check', 'error'); fetchLendings(); }
     finally { setBulkSaving(false); }
   };
 
-  // ── Report Generation ─────────────────────────────────────────────────────
+  // Report Generation
   const uniqueContacts = [...new Map(
     lendings.map(l => [l.contact ? `id:${l.contact}` : `name:${l.contact_name}`, { key: l.contact ? `id:${l.contact}` : `name:${l.contact_name}`, name: l.contact_display, avatar: l.contact_avatar }])
   ).values()];
@@ -190,7 +191,6 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
     const fmtAmt  = (v) => '₹' + parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
-    // Filter lendings for report
     const reportData = lendings.filter(l => {
       const key = l.contact ? `id:${l.contact}` : `name:${l.contact_name}`;
       if (!reportContacts.includes(key)) return false;
@@ -200,7 +200,6 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
 
     if (reportData.length === 0) { showToast('No entries match the selected filters', 'error'); return; }
 
-    // Per-contact summary
     const contactMap = {};
     reportData.forEach(l => {
       const key = l.contact_display;
@@ -242,7 +241,7 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
       </div>`;
     }).join('');
 
-    const statusLabel = reportStatus === 'all' ? 'All entries' : STATUS_LABEL[reportStatus] || reportStatus;
+    const statusLabel  = reportStatus === 'all' ? 'All entries' : STATUS_LABEL[reportStatus] || reportStatus;
     const contactLabel = reportContacts.length === uniqueContacts.length ? 'All contacts' : reportContacts.map(k => uniqueContacts.find(c => c.key === k)?.name || k).join(', ');
 
     const html = `<!DOCTYPE html><html><head><title>Lending & IOU Statement</title>
@@ -318,14 +317,13 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
               📄 Report
             </button>
           )}
-          <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : openAdd}
-            style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showForm ? '#64748b' : '#1d4ed8' }}>
-            {showForm ? '✕ Cancel' : '+ Record Lending'}
+          <button onClick={openAdd} style={s.addBtn}>
+            + Record Lending
           </button>
         </div>
       </div>
 
-      {/* Report filter panel */}
+      {/* Report filter panel (stays inline) */}
       {showReport && (
         <div style={{ ...s.card, marginBottom: 14, borderLeft: '4px solid #7e22ce' }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#7e22ce' }}>📄 Generate Lending Report</div>
@@ -347,7 +345,7 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
           </div>
           <div style={{ marginBottom: 12 }}>
             <label style={s.fieldLabel}>Status filter</label>
-            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
               {[['all','All entries'],['outstanding','Outstanding only'],['partial','Partial paid'],['settled','Settled only']].map(([v, l]) => (
                 <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
                   <input type="radio" name="reportStatus" value={v} checked={reportStatus === v} onChange={() => setReportStatus(v)} />
@@ -414,92 +412,13 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
             <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>{selectedIds.size} entr{selectedIds.size === 1 ? 'y' : 'ies'} selected</span>
             <span style={{ fontSize: 12, color: '#92400e', marginLeft: 8 }}>— Total outstanding: <strong>₹{fmt(totalSelectedOutstanding)}</strong></span>
           </div>
-          <button onClick={() => setShowBulkSettle(true)} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: '#16a34a' }}>
+          <button onClick={() => setBulkModalOpen(true)} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: '#16a34a' }}>
             📥 Bulk Settle
           </button>
-          <button onClick={() => { setSelectedIds(new Set()); setShowBulkSettle(false); }} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: '#64748b' }}>
+          <button onClick={() => { setSelectedIds(new Set()); setBulkModalOpen(false); }} style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: '#64748b' }}>
             ✕ Clear
           </button>
         </div>
-      )}
-
-      {/* Bulk settle panel */}
-      {showBulkSettle && selectedIds.size > 0 && (
-        <div style={{ ...s.card, marginBottom: 14, borderLeft: '4px solid #16a34a' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#16a34a' }}>
-            📥 Bulk Settle — {selectedIds.size} entries · Total outstanding ₹{fmt(totalSelectedOutstanding)}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-            <div>
-              <label style={s.fieldLabel}>Payment Amount (₹)</label>
-              <input style={s.input} type="number" step="0.01" value={bulkForm.amount} onChange={e => setBulkForm(f => ({ ...f, amount: e.target.value }))} placeholder={String(Math.round(totalSelectedOutstanding * 100) / 100)} />
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Payment Date</label>
-              <input style={s.input} type="date" value={bulkForm.date} onChange={e => setBulkForm(f => ({ ...f, date: e.target.value }))} />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={s.fieldLabel}>Notes (applies to all)</label>
-              <input style={s.input} value={bulkForm.notes} onChange={e => setBulkForm(f => ({ ...f, notes: e.target.value }))} placeholder="Cash payment, UPI transfer…" />
-            </div>
-          </div>
-
-          {/* Distribution preview */}
-          {bulkForm.amount && parseFloat(bulkForm.amount) > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Distribution preview (oldest first)</div>
-              {bulkDistribution.map(item => (
-                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 10px', background: item.pay > 0 ? '#f0fdf4' : '#f8fafc', borderRadius: 6, marginBottom: 3, fontSize: 12 }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                    {item.contact_display} · {item.description} <span style={{ color: '#94a3b8' }}>({fmtD(item.date)})</span>
-                  </span>
-                  <span style={{ flexShrink: 0, marginLeft: 8 }}>
-                    {item.pay > 0 ? (
-                      <span style={{ fontWeight: 700, color: '#16a34a' }}>+₹{fmt(item.pay)} {item.willSettle ? '✓ SETTLES' : `(₹${fmt((item.outstanding || 0) - item.pay)} left)`}</span>
-                    ) : (
-                      <span style={{ color: '#94a3b8' }}>— no funds left</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleBulkSettle} disabled={bulkSaving || !bulkForm.amount || parseFloat(bulkForm.amount) <= 0}
-              style={{ ...s.primaryBtn, flex: 1, backgroundColor: '#16a34a', opacity: (!bulkForm.amount || parseFloat(bulkForm.amount) <= 0) ? 0.5 : 1 }}>
-              {bulkSaving ? 'Applying…' : '✓ Apply Settlement'}
-            </button>
-            <button onClick={() => setShowBulkSettle(false)} style={{ ...s.primaryBtn, backgroundColor: '#64748b' }}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* Add/Edit form */}
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit Lending' : 'Record New Lending'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div>
-              <label style={s.fieldLabel}>Contact (from family list)</label>
-              <select style={s.input} value={form.contact} onChange={e => { setF('contact', e.target.value); if (e.target.value) setF('contact_name', ''); }}>
-                <option value="">— type name below instead —</option>
-                {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Or enter name directly</label>
-              <input style={s.input} value={form.contact_name} onChange={e => { setF('contact_name', e.target.value); if (e.target.value) setF('contact', ''); }} placeholder="Uncle Ram, Friend Suresh…" disabled={!!form.contact} />
-            </div>
-            <div><label style={s.fieldLabel}>Date</label><input style={s.input} type="date" value={form.date} onChange={e => setF('date', e.target.value)} /></div>
-            <div><label style={s.fieldLabel}>Amount (₹) *</label><input style={s.input} type="number" step="0.01" value={form.amount} onChange={e => setF('amount', e.target.value)} /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Description *</label><input style={s.input} value={form.description} onChange={e => setF('description', e.target.value)} placeholder="What was paid for them? Petrol, groceries, hospital…" /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Notes</label><input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} /></div>
-          </div>
-          <button type="submit" disabled={saving} style={{ ...s.primaryBtn, width: '100%', marginTop: 10 }}>
-            {saving ? 'Saving…' : editId ? '✓ Update' : '✓ Record Lending'}
-          </button>
-        </form>
       )}
 
       {loading && <p style={s.empty}>Loading…</p>}
@@ -522,17 +441,14 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
         return (
           <div key={lending.id} style={{ ...s.card, marginBottom: 10, borderLeft: `4px solid ${STATUS_COLOR[status]}`, outline: isSelected ? '2px solid #16a34a' : 'none', outlineOffset: 2 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              {/* Checkbox for bulk select (active view only) */}
               {view === 'active' && (
                 <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(lending.id)}
                   style={{ width: 18, height: 18, marginTop: 4, flexShrink: 0, cursor: 'pointer' }} />
               )}
-              {/* Avatar */}
               <div style={{ width: 42, height: 42, borderRadius: 10, background: `${STATUS_COLOR[status]}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, cursor: 'pointer' }}
                 onClick={() => setExpandId(expanded ? null : lending.id)}>
                 {lending.contact_avatar || '👤'}
               </div>
-              {/* Content */}
               <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setExpandId(expanded ? null : lending.id)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div>
@@ -557,7 +473,7 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
               </span>
             </div>
 
-            {/* Expanded detail */}
+            {/* Expanded detail with inline payback forms */}
             {expanded && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
                 {lending.notes && <p style={{ fontSize: 12, color: '#475569', marginBottom: 10 }}>{lending.notes}</p>}
@@ -587,12 +503,12 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
                     ) : (
                       <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '10px 12px' }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', marginBottom: 8 }}>Record Payback (outstanding: ₹{fmt(outstanding)})</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
-                          <div><label style={s.fieldLabel}>Date</label><input style={s.input} type="date" value={pf.date || todayStr()} onChange={e => setPF(lending.id, 'date', e.target.value)} /></div>
-                          <div><label style={s.fieldLabel}>Amount (₹)</label><input style={s.input} type="number" step="0.01" value={pf.amount || ''} onChange={e => setPF(lending.id, 'amount', e.target.value)} placeholder={String(Math.round(outstanding * 100) / 100)} /></div>
-                          <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Notes</label><input style={s.input} value={pf.notes || ''} onChange={e => setPF(lending.id, 'notes', e.target.value)} placeholder="Cash, UPI, partial…" /></div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <label style={s.fieldLabel}>Date<input style={s.input} type="date" value={pf.date || todayStr()} onChange={e => setPF(lending.id, 'date', e.target.value)} /></label>
+                          <label style={s.fieldLabel}>Amount (₹)<input style={s.input} type="number" step="0.01" value={pf.amount || ''} onChange={e => setPF(lending.id, 'amount', e.target.value)} placeholder={String(Math.round(outstanding * 100) / 100)} /></label>
+                          <label style={s.fieldLabel}>Notes<input style={s.input} value={pf.notes || ''} onChange={e => setPF(lending.id, 'notes', e.target.value)} placeholder="Cash, UPI, partial…" /></label>
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                           <button onClick={() => handleRecordPayback(lending.id, outstanding)} disabled={paybackSaving[lending.id]}
                             style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: '#16a34a' }}>
                             {paybackSaving[lending.id] ? 'Saving…' : '✓ Save Payback'}
@@ -614,6 +530,75 @@ export default function HomeLendingTab({ family, showToast, onSaved }) {
           </div>
         );
       })}
+
+      {/* Add / Edit Lending Modal */}
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Lending' : 'Record New Lending'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? '✓ Update' : '✓ Record Lending'} saving={saving}>
+        <div className="form-grid">
+          <label>Contact (from family list)
+            <select style={s.input} value={form.contact} onChange={e => { setF('contact', e.target.value); if (e.target.value) setF('contact_name', ''); }}>
+              <option value="">— type name below instead —</option>
+              {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
+            </select>
+          </label>
+          <label>Or enter name directly
+            <input style={s.input} value={form.contact_name} onChange={e => { setF('contact_name', e.target.value); if (e.target.value) setF('contact', ''); }} placeholder="Uncle Ram, Friend Suresh…" disabled={!!form.contact} />
+          </label>
+          <label>Date
+            <input style={s.input} type="date" value={form.date} onChange={e => setF('date', e.target.value)} />
+          </label>
+          <label>Amount (₹) *
+            <input style={s.input} type="number" step="0.01" value={form.amount} onChange={e => setF('amount', e.target.value)} />
+          </label>
+          <label>Description *
+            <input style={s.input} value={form.description} onChange={e => setF('description', e.target.value)} placeholder="What was paid for them? Petrol, groceries, hospital…" />
+          </label>
+          <label>Notes
+            <input style={s.input} value={form.notes} onChange={e => setF('notes', e.target.value)} />
+          </label>
+        </div>
+      </Modal>
+
+      {/* Bulk Settle Modal */}
+      <Modal open={bulkModalOpen} onClose={() => setBulkModalOpen(false)}
+        title={`📥 Bulk Settle — ${selectedIds.size} entries · ₹${fmt(totalSelectedOutstanding)} outstanding`}
+        onSave={handleBulkSettle}
+        saveLabel={bulkSaving ? 'Applying…' : '✓ Apply Settlement'}
+        saving={bulkSaving}>
+        <div className="form-grid">
+          <label>Payment Amount (₹)
+            <input style={s.input} type="number" step="0.01" value={bulkForm.amount}
+              onChange={e => setBulkForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder={String(Math.round(totalSelectedOutstanding * 100) / 100)} />
+          </label>
+          <label>Payment Date
+            <input style={s.input} type="date" value={bulkForm.date} onChange={e => setBulkForm(f => ({ ...f, date: e.target.value }))} />
+          </label>
+          <label>Notes (applies to all)
+            <input style={s.input} value={bulkForm.notes} onChange={e => setBulkForm(f => ({ ...f, notes: e.target.value }))} placeholder="Cash payment, UPI transfer…" />
+          </label>
+
+          {bulkForm.amount && parseFloat(bulkForm.amount) > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Distribution preview (oldest first)</div>
+              {bulkDistribution.map(item => (
+                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 10px', background: item.pay > 0 ? '#f0fdf4' : '#f8fafc', borderRadius: 6, marginBottom: 3, fontSize: 12 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {item.contact_display} · {item.description} <span style={{ color: '#94a3b8' }}>({fmtD(item.date)})</span>
+                  </span>
+                  <span style={{ flexShrink: 0, marginLeft: 8 }}>
+                    {item.pay > 0 ? (
+                      <span style={{ fontWeight: 700, color: '#16a34a' }}>+₹{fmt(item.pay)} {item.willSettle ? '✓ SETTLES' : `(₹${fmt((item.outstanding || 0) - item.pay)} left)`}</span>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>— no funds left</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const EXPENSE_TYPES = [
   { value: 'medicine',   label: '💊 Medicine',    color: '#3b82f6' },
@@ -14,7 +15,6 @@ const TYPE_MAP = Object.fromEntries(EXPENSE_TYPES.map(t => [t.value, t]));
 const PAYMENT_METHODS = ['cash', 'card', 'upi', 'insurance', 'other'];
 const PM_LABELS = { cash: '💵 Cash', card: '💳 Card', upi: '📱 UPI', insurance: '🏥 Insurance', other: 'Other' };
 
-// Distinct colour palette for payers (cycles if > 8)
 const PAYER_COLORS = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d'];
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -46,6 +46,7 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
   const [form, setForm]             = useState(emptyForm());
   const [saving, setSaving]         = useState(false);
   const [editId, setEditId]         = useState(null);
+  const [modalOpen, setModalOpen]   = useState(false);
   const [patientFilter, setPatientFilter] = useState('');
   const [typeFilter, setTypeFilter]       = useState('');
   const [payerFilter, setPayerFilter]     = useState('');
@@ -76,7 +77,7 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const resetForm = () => { setForm(emptyForm()); setEditId(null); };
+  const resetForm = () => { setForm(emptyForm()); setEditId(null); setModalOpen(false); };
 
   const handleSave = async () => {
     if (!form.description.trim()) return showToast('Description is required', 'error');
@@ -102,7 +103,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
       if (res.ok) {
         showToast(editId ? 'Updated' : 'Expense recorded', 'success');
         resetForm();
-        setTab('list');
         fetchData();
       } else {
         const err = await res.json();
@@ -133,7 +133,7 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
       patient:        e.patient ? String(e.patient) : '',
       notes:          e.notes || '',
     });
-    setTab('add');
+    setModalOpen(true);
   };
 
   const handleGenerateReport = () => {
@@ -146,7 +146,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
       payerFilter   && `Paid by: ${payerFilter}`,
     ].filter(Boolean);
 
-    // Group expenses by date
     const byDate = expenses.reduce((acc, e) => { (acc[e.expense_date] = acc[e.expense_date] || []).push(e); return acc; }, {});
     const sortedDates = Object.keys(byDate).sort().reverse();
 
@@ -208,20 +207,17 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
   <h1>Medicare — Health Expenses Report</h1>
   <div class="sub">Period: ${fmtDate(startDate)} to ${fmtDate(endDate)}</div>
   ${filters.map(f => `<span class="filter-tag">${f}</span>`).join('')}
-
   <div class="total-box">
     <div class="total-label">Total Healthcare Spend</div>
     <div class="total-value">${fmtAmt(totalAmount)}</div>
     <div style="font-size:12px;color:#0369a1;margin-top:2px">${expenses.length} expense${expenses.length !== 1 ? 's' : ''}</div>
   </div>
-
   <div class="section-title">Summary</div>
   <div class="summary-grid">
     ${typeRows ? `<div class="summary-box"><table><thead><tr><th>Category</th><th style="text-align:right">Amount</th><th style="text-align:right">Share</th></tr></thead><tbody>${typeRows}</tbody></table></div>` : ''}
     ${patientRows ? `<div class="summary-box"><table><thead><tr><th>Patient</th><th style="text-align:right">Amount</th></tr></thead><tbody>${patientRows}</tbody></table></div>` : ''}
     ${payerRows ? `<div class="summary-box"><table><thead><tr><th>Paid By</th><th style="text-align:right">Amount</th></tr></thead><tbody>${payerRows}</tbody></table></div>` : ''}
   </div>
-
   <div class="section-title">Expense Detail</div>
   <table class="expenses">
     <thead><tr><th>Category</th><th>Description</th><th>Paid By</th><th>Method</th><th style="text-align:right">Amount</th></tr></thead>
@@ -231,7 +227,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
       <td style="padding:8px 12px;text-align:right">${fmtAmt(totalAmount)}</td>
     </tr></tfoot>
   </table>
-
   <div class="footer">Generated on ${new Date().toLocaleString('en-IN')} · Medicare Expenses Report</div>
 </body></html>`;
 
@@ -247,18 +242,14 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
   const byPayer        = summary?.by_payer  || [];
   const byMonth        = summary?.by_month  || [];
   const maxMonthTotal  = Math.max(...byMonth.map(m => m.total), 1);
-
-  // Derive known payers from current summary for the filter dropdown
-  const knownPayers = byPayer.filter(p => p.payer !== 'Unspecified').map(p => p.payer);
-
-  // Assign stable colours to payers
-  const payerColorMap = {};
+  const knownPayers    = byPayer.filter(p => p.payer !== 'Unspecified').map(p => p.payer);
+  const payerColorMap  = {};
   byPayer.forEach((p, i) => { payerColorMap[p.payer] = PAYER_COLORS[i % PAYER_COLORS.length]; });
 
   return (
     <div style={{ width: '100%' }}>
 
-      {/* ── Filters ── */}
+      {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>
           <label style={{ ...s.fieldLabel, marginBottom: 3 }}>From</label>
@@ -291,27 +282,30 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
         </div>
       </div>
 
-      {/* ── Sub-tabs ── */}
+      {/* Toolbar */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        {[['summary','📊 Summary'],['list','📋 List'],['add', editId ? '✏ Edit' : '➕ Add']].map(([v, lbl]) => (
-          <button key={v} onClick={() => { setTab(v); if (v !== 'add' && !editId) resetForm(); }} style={{
-            padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13,
+        {[['summary','📊 Summary'],['list','📋 List']].map(([v, lbl]) => (
+          <button key={v} onClick={() => setTab(v)} style={{
+            padding: '9px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13, minHeight: 42,
             backgroundColor: tab === v ? 'var(--primary)' : 'var(--bg-secondary)',
             color: tab === v ? 'white' : 'var(--text)',
             border: `1px solid ${tab === v ? 'var(--primary)' : 'var(--border)'}`,
           }}>{lbl}</button>
         ))}
         <button onClick={handleGenerateReport} disabled={expenses.length === 0}
-          style={{ padding: '7px 14px', borderRadius: 8, cursor: expenses.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 13, backgroundColor: '#7e22ce', color: 'white', border: 'none', opacity: expenses.length === 0 ? 0.5 : 1, marginLeft: 'auto' }}>
-          📄 Generate Report
+          style={{ padding: '9px 16px', borderRadius: 8, cursor: expenses.length === 0 ? 'not-allowed' : 'pointer',
+            fontWeight: 600, fontSize: 13, backgroundColor: '#7e22ce', color: 'white', border: 'none',
+            opacity: expenses.length === 0 ? 0.5 : 1, minHeight: 42 }}>
+          📄 Report
+        </button>
+        <button style={{ ...s.addBtn, marginLeft: 'auto' }} onClick={() => { setForm(emptyForm()); setEditId(null); setModalOpen(true); }}>
+          + Add Expense
         </button>
       </div>
 
-      {/* ── Summary tab ── */}
+      {/* Summary tab */}
       {tab === 'summary' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Total card */}
           <div style={{ ...s.card, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: 12, color: 'var(--text-faint)', fontWeight: 600, textTransform: 'uppercase' }}>Total Healthcare Spend</div>
@@ -320,9 +314,7 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{expenses.length} entries</div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-
-            {/* By category */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
             {byType.length > 0 && (
               <div style={s.card}>
                 <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid var(--border)' }}>By Category</div>
@@ -346,7 +338,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
               </div>
             )}
 
-            {/* By payer */}
             {byPayer.length > 0 && (
               <div style={s.card}>
                 <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid var(--border)' }}>By Payer</div>
@@ -366,7 +357,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
                         <div style={{ height: 8, backgroundColor: 'var(--bg2)', borderRadius: 4, overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${pct}%`, backgroundColor: color, borderRadius: 4 }} />
                         </div>
-                        {/* Click to filter */}
                         <button onClick={() => setPayerFilter(p.payer === 'Unspecified' ? '' : p.payer)}
                           style={{ fontSize: 10, color: 'var(--text-faint)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 1 }}>
                           filter by this payer ›
@@ -375,8 +365,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
                     );
                   })}
                 </div>
-
-                {/* Donut-style legend summary */}
                 <div style={{ padding: '0 14px 12px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {byPayer.map((p, i) => (
                     <span key={p.payer} style={{
@@ -392,7 +380,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
               </div>
             )}
 
-            {/* By patient */}
             {byPatient.length > 1 && (
               <div style={s.card}>
                 <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid var(--border)' }}>By Patient</div>
@@ -407,7 +394,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
               </div>
             )}
 
-            {/* Monthly spend bar chart */}
             {byMonth.length > 0 && (
               <div style={{ ...s.card, gridColumn: byPatient.length > 1 ? 'auto' : '1 / -1' }}>
                 <div style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
@@ -434,7 +420,6 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
                     </div>
                   ))}
                 </div>
-                {/* Legend */}
                 <div style={{ padding: '0 14px 12px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {EXPENSE_TYPES.map(t => (
                     <span key={t.value} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-muted)' }}>
@@ -452,15 +437,15 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
         </div>
       )}
 
-      {/* ── List tab ── */}
+      {/* List tab */}
       {tab === 'list' && (
-        <div style={s.productsPanel}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {loading && <div style={s.empty}>Loading…</div>}
           {!loading && expenses.length === 0 && <div style={s.empty}>No expenses found.</div>}
           {expenses.map(e => {
             const info = TYPE_MAP[e.expense_type] || { label: e.expense_type, color: '#6b7280' };
             return (
-              <div key={e.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 3, marginBottom: 6 }}>
+              <div key={e.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 3 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <span style={{ fontSize: 11, backgroundColor: info.color + '22', color: info.color,
@@ -488,84 +473,78 @@ export default function HealthExpensesTab({ patients = [], showToast }) {
         </div>
       )}
 
-      {/* ── Add / Edit tab ── */}
-      {tab === 'add' && (
-        <div style={{ ...s.cartPanel, maxWidth: 560 }}>
-          <div style={s.panelTitle}>{editId ? '✏ Edit Expense' : '➕ Add Expense'}</div>
+      {/* Add / Edit Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={resetForm}
+        title={editId ? 'Edit Expense' : 'Add Health Expense'}
+        onSave={handleSave}
+        saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Save'}
+        saving={saving}
+      >
+        <div className="form-grid">
+          <label>
+            Category *
+            <select style={s.input} value={form.expense_type}
+              onChange={e => setForm(f => ({ ...f, expense_type: e.target.value }))}>
+              {EXPENSE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </label>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div>
-              <label style={s.fieldLabel}>Category *</label>
-              <select style={s.input} value={form.expense_type}
-                onChange={e => setForm(f => ({ ...f, expense_type: e.target.value }))}>
-                {EXPENSE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
+          <label>
+            Description *
+            <input style={s.input} value={form.description} placeholder="e.g. CBC Blood Test, Apollo Pharmacy"
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+          </label>
 
-            <div>
-              <label style={s.fieldLabel}>Description *</label>
-              <input style={s.input} value={form.description} placeholder="e.g. CBC Blood Test, Apollo Pharmacy"
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
+          <label>
+            Date *
+            <input style={s.input} type="date" value={form.expense_date}
+              onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
+          </label>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Date *</label>
-                <input style={s.input} type="date" value={form.expense_date}
-                  onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
-              </div>
-              <div>
-                <label style={s.fieldLabel}>Amount ₹ *</label>
-                <input style={s.input} type="number" min="0" step="0.01" placeholder="0.00" value={form.amount}
-                  onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
-              </div>
-            </div>
+          <label>
+            Amount ₹ *
+            <input style={s.input} type="number" min="0" step="0.01" placeholder="0.00" value={form.amount}
+              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
+          </label>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Payment Method</label>
-                <select style={s.input} value={form.payment_method}
-                  onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
-                  {PAYMENT_METHODS.map(m => <option key={m} value={m}>{PM_LABELS[m]}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={s.fieldLabel}>Paid By</label>
-                <input style={s.input} value={form.paid_by} placeholder="e.g. Self, Mom, Insurance"
-                  onChange={e => setForm(f => ({ ...f, paid_by: e.target.value }))}
-                  list="known-payers" />
-                {knownPayers.length > 0 && (
-                  <datalist id="known-payers">
-                    {knownPayers.map(p => <option key={p} value={p} />)}
-                  </datalist>
-                )}
-              </div>
-            </div>
+          <label>
+            Payment Method
+            <select style={s.input} value={form.payment_method}
+              onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{PM_LABELS[m]}</option>)}
+            </select>
+          </label>
 
-            <div>
-              <label style={s.fieldLabel}>Patient (optional)</label>
-              <select style={s.input} value={form.patient}
-                onChange={e => setForm(f => ({ ...f, patient: e.target.value }))}>
-                <option value="">— Household / General —</option>
-                {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
+          <label>
+            Paid By
+            <input style={s.input} value={form.paid_by} placeholder="e.g. Self, Mom, Insurance"
+              onChange={e => setForm(f => ({ ...f, paid_by: e.target.value }))}
+              list="known-payers" />
+            {knownPayers.length > 0 && (
+              <datalist id="known-payers">
+                {knownPayers.map(p => <option key={p} value={p} />)}
+              </datalist>
+            )}
+          </label>
 
-            <div>
-              <label style={s.fieldLabel}>Notes</label>
-              <input style={s.input} value={form.notes} placeholder="Optional"
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-            </div>
+          <label>
+            Patient (optional)
+            <select style={s.input} value={form.patient}
+              onChange={e => setForm(f => ({ ...f, patient: e.target.value }))}>
+              <option value="">— Household / General —</option>
+              {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
 
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ ...s.saveBtn, flex: 1, marginTop: 0 }} onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : editId ? 'Update' : '💾 Save'}
-              </button>
-              <button style={s.cancelBtn} onClick={() => { resetForm(); setTab('list'); }}>Cancel</button>
-            </div>
-          </div>
+          <label>
+            Notes
+            <input style={s.input} value={form.notes} placeholder="Optional"
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </label>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

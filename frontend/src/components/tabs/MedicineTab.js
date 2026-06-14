@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const UNITS = ['tablets', 'mg', 'ml', 'units'];
 const TYPES = ['tablet', 'insulin', 'syrup', 'capsule', 'drop', 'other'];
@@ -52,18 +53,19 @@ const emptyForm = {
 };
 
 export default function MedicineTab({ showToast, medicines, patients = [], onSaved }) {
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [editId, setEditId] = useState(null);
+  const [form, setForm]         = useState(emptyForm);
+  const [saving, setSaving]     = useState(false);
+  const [editId, setEditId]     = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [patientFilter, setPatientFilter] = useState('all');
 
-  // modal state
-  const [modal, setModal] = useState(null); // { type, medicine }
-  const [modalQty, setModalQty] = useState('');
-  const [modalNotes, setModalNotes] = useState('');
-  const [modalSaving, setModalSaving] = useState(false);
+  // Stock modal state
+  const [stockModal, setStockModal]     = useState(null); // { type, medicine }
+  const [modalQty, setModalQty]         = useState('');
+  const [modalNotes, setModalNotes]     = useState('');
+  const [modalSaving, setModalSaving]   = useState(false);
 
-  const resetForm = () => { setForm(emptyForm); setEditId(null); };
+  const resetForm = () => { setForm(emptyForm); setEditId(null); setModalOpen(false); };
 
   const startEdit = (med) => {
     setEditId(med.id);
@@ -86,6 +88,7 @@ export default function MedicineTab({ showToast, medicines, patients = [], onSav
       prescribed_by: med.prescribed_by || '',
       specialty: med.specialty || '',
     });
+    setModalOpen(true);
   };
 
   const handleSave = async () => {
@@ -98,7 +101,6 @@ export default function MedicineTab({ showToast, medicines, patients = [], onSav
       const url = editId ? `${API}/api/medicines/${editId}/` : `${API}/api/medicines/`;
       const method = editId ? 'PATCH' : 'POST';
 
-      // Derive dosage_per_intake from first active slot (for backward compat)
       const firstActiveSlot = SLOTS.find(sl => form[sl.key.replace('_dose', '_on')]);
       const dosageRef = firstActiveSlot ? parseFloat(form[firstActiveSlot.key]) || 1 : 1;
       const activeCount = SLOTS.filter(sl => form[sl.key.replace('_dose', '_on')]).length;
@@ -144,30 +146,28 @@ export default function MedicineTab({ showToast, medicines, patients = [], onSav
     else showToast('Failed to delete', 'error');
   };
 
-  const openModal = (type, med) => {
-    setModal({ type, medicine: med });
+  const openStockModal = (type, med) => {
+    setStockModal({ type, medicine: med });
     setModalQty('');
     setModalNotes('');
   };
 
   const handleModalAction = async () => {
-    if (!modal) return;
-    const { type, medicine } = modal;
+    if (!stockModal) return;
+    const { type, medicine } = stockModal;
     const qty = parseFloat(modalQty);
     if (isNaN(qty) || (type !== 'adjust' && qty <= 0)) return showToast('Enter a valid quantity', 'error');
     setModalSaving(true);
     try {
       const headers = getAuthHeaders();
       if (!headers) return;
-      let body = { quantity: qty, notes: modalNotes };
       const res = await fetch(`${API}/api/medicines/${medicine.id}/${type}/`, {
         method: 'POST', headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify({ quantity: qty, notes: modalNotes }),
       });
       if (res.ok) {
-        const label = type === 'add_stock' ? 'Stock added' : 'Stock adjusted';
-        showToast(label, 'success');
-        setModal(null);
+        showToast(type === 'add_stock' ? 'Stock added' : 'Stock adjusted', 'success');
+        setStockModal(null);
         onSaved();
       } else {
         const err = await res.json();
@@ -185,268 +185,214 @@ export default function MedicineTab({ showToast, medicines, patients = [], onSav
       : list.filter(m => m.patient === parseInt(patientFilter));
 
   return (
-    <>
-    <div style={{ width: '100%' }}>
-      <div style={s.twoPanel}>
+    <div style={s.section}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <h3 style={{ ...s.sectionTitle, margin: 0, flex: 1 }}>💊 Medicines ({filteredList.length})</h3>
+        <button onClick={() => { setForm(emptyForm); setEditId(null); setModalOpen(true); }} style={s.addBtn}>
+          + Add Medicine
+        </button>
+      </div>
 
-        {/* Left — medicine list */}
-        <div style={s.productsPanel}>
-          <div style={s.panelTitle}>
-            💊 Medicines
-            <span style={s.cartBadge}>{filteredList.length}</span>
-          </div>
+      {/* Patient filter pills */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        {[['all', 'All', 'var(--primary)'], ['unassigned', 'Household', '#fbbf24']].map(([key, lbl, clr]) => (
+          <button key={key} onClick={() => setPatientFilter(key)} style={{
+            fontSize: 12, padding: '4px 10px', borderRadius: 16, cursor: 'pointer',
+            backgroundColor: patientFilter === key ? clr : 'var(--bg-secondary)',
+            color: patientFilter === key ? 'white' : 'var(--text)',
+            border: `1px solid ${patientFilter === key ? clr : 'var(--border)'}`,
+            fontWeight: patientFilter === key ? 600 : 400,
+          }}>{lbl}</button>
+        ))}
+        {patients.map(p => (
+          <button key={p.id} onClick={() => setPatientFilter(String(p.id))} style={{
+            fontSize: 12, padding: '4px 10px', borderRadius: 16, cursor: 'pointer',
+            backgroundColor: patientFilter === String(p.id) ? '#60a5fa' : 'var(--bg-secondary)',
+            color: patientFilter === String(p.id) ? 'white' : 'var(--text)',
+            border: `1px solid ${patientFilter === String(p.id) ? '#60a5fa' : 'var(--border)'}`,
+            fontWeight: patientFilter === String(p.id) ? 600 : 400,
+          }}>{p.name}</button>
+        ))}
+      </div>
 
-          {/* Patient filter pills */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-            {[['all', 'All', 'var(--primary)'], ['unassigned', 'Household', '#fbbf24']].map(([key, lbl, clr]) => (
-              <button key={key} onClick={() => setPatientFilter(key)} style={{
-                fontSize: 12, padding: '4px 10px', borderRadius: 16, cursor: 'pointer',
-                backgroundColor: patientFilter === key ? clr : 'var(--bg-secondary)',
-                color: patientFilter === key ? 'white' : 'var(--text)',
-                border: `1px solid ${patientFilter === key ? clr : 'var(--border)'}`,
-                fontWeight: patientFilter === key ? 600 : 400,
-              }}>{lbl}</button>
-            ))}
-            {patients.map(p => (
-              <button key={p.id} onClick={() => setPatientFilter(String(p.id))} style={{
-                fontSize: 12, padding: '4px 10px', borderRadius: 16, cursor: 'pointer',
-                backgroundColor: patientFilter === String(p.id) ? '#60a5fa' : 'var(--bg-secondary)',
-                color: patientFilter === String(p.id) ? 'white' : 'var(--text)',
-                border: `1px solid ${patientFilter === String(p.id) ? '#60a5fa' : 'var(--border)'}`,
-                fontWeight: patientFilter === String(p.id) ? 600 : 400,
-              }}>{p.name}</button>
-            ))}
-          </div>
+      {filteredList.length === 0 && (
+        <div style={s.empty}>{patientFilter === 'all' ? 'No medicines yet.' : 'No medicines for this filter.'}</div>
+      )}
 
-          {filteredList.length === 0 && (
-            <div style={s.empty}>{patientFilter === 'all' ? 'No medicines yet.' : 'No medicines for this filter.'}</div>
-          )}
-          {filteredList.map(med => {
-            const daysLeft = med.days_left;
-            const daysText = daysLeft === null ? '—' : `${daysLeft}d left`;
-            const foodLabel = FOOD_LABELS[med.food_relation];
-            const schedule = scheduleText(med);
-            return (
-              <div key={med.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 5 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14 }}>{med.medicine_name}</span>
-                    {med.strength && <span style={{ fontSize: 11, color: 'var(--text-faint)', marginLeft: 6 }}>{med.strength}</span>}
-                    {med.brand_name && <span style={{ fontSize: 11, color: 'var(--text-faint)', marginLeft: 6 }}>{med.brand_name}</span>}
-                    {(med.prescribed_by || med.specialty) && (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-                        {med.prescribed_by && `Dr. ${med.prescribed_by}`}{med.specialty ? ` · ${med.specialty}` : ''}
-                      </div>
-                    )}
-                    <div style={{ marginTop: 3 }}>
-                      <span style={{ fontSize: 11, backgroundColor: med.patient_name ? '#eff6ff' : '#f3f4f6',
-                        color: med.patient_name ? '#0369a1' : '#6b7280', padding: '2px 6px', borderRadius: 4 }}>
-                        {med.patient_name ? `👤 ${med.patient_name}` : '🏠 Household'}
-                      </span>
-                    </div>
-                  </div>
-                  <AlertBadge level={med.alert_level} />
-                </div>
-                {schedule && (
-                  <div style={{ fontSize: 11, color: '#0369a1', backgroundColor: '#dbeafe', padding: '3px 7px', borderRadius: 4 }}>
-                    {schedule}
+      {filteredList.map(med => {
+        const daysLeft = med.days_left;
+        const daysText = daysLeft === null ? '—' : `${daysLeft}d left`;
+        const foodLabel = FOOD_LABELS[med.food_relation];
+        const schedule = scheduleText(med);
+        return (
+          <div key={med.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 5 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{med.medicine_name}</span>
+                {med.strength && <span style={{ fontSize: 11, color: 'var(--text-faint)', marginLeft: 6 }}>{med.strength}</span>}
+                {med.brand_name && <span style={{ fontSize: 11, color: 'var(--text-faint)', marginLeft: 6 }}>{med.brand_name}</span>}
+                {(med.prescribed_by || med.specialty) && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                    {med.prescribed_by && `Dr. ${med.prescribed_by}`}{med.specialty ? ` · ${med.specialty}` : ''}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8, fontSize: 11, flexWrap: 'wrap' }}>
-                  {foodLabel && (
-                    <span style={{ backgroundColor: '#f0fdf4', color: '#16a34a', padding: '2px 6px', borderRadius: 4 }}>
-                      {foodLabel}
-                    </span>
-                  )}
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Stock: <strong style={{ color: 'var(--text)' }}>{parseFloat(med.current_stock)} {med.unit}</strong>
-                  </span>
-                  <span style={{ color: med.alert_level === 'critical' ? '#dc2626' : med.alert_level === 'low' ? '#d97706' : 'var(--text-muted)' }}>
-                    {daysText}
+                <div style={{ marginTop: 3 }}>
+                  <span style={{ fontSize: 11, backgroundColor: med.patient_name ? '#eff6ff' : '#f3f4f6',
+                    color: med.patient_name ? '#0369a1' : '#6b7280', padding: '2px 6px', borderRadius: 4 }}>
+                    {med.patient_name ? `👤 ${med.patient_name}` : '🏠 Household'}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button style={{ ...s.secondaryBtn, fontSize: 12, padding: '4px 10px' }} onClick={() => openModal('add_stock', med)}>➕ Add Stock</button>
-                  <button style={{ ...s.iconBtn }} onClick={() => openModal('adjust', med)}>✏ Adjust</button>
-                  <button style={{ ...s.iconBtn }} onClick={() => startEdit(med)}>📝 Edit</button>
-                  <button style={{ ...s.iconBtn, color: '#dc2626' }} onClick={() => handleDelete(med.id)}>🗑</button>
-                </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Right — add/edit form */}
-        <div style={s.cartPanel}>
-          <div style={s.panelTitle}>{editId ? '📝 Edit Medicine' : '➕ Add Medicine'}</div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div>
-              <label style={s.fieldLabel}>Medicine Name *</label>
-              <input style={s.input} value={form.medicine_name} placeholder="e.g. Metformin"
-                onChange={e => setForm(f => ({ ...f, medicine_name: e.target.value }))} />
+              <AlertBadge level={med.alert_level} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Brand Name</label>
-                <input style={s.input} value={form.brand_name} placeholder="e.g. Glycomet"
-                  onChange={e => setForm(f => ({ ...f, brand_name: e.target.value }))} />
+            {schedule && (
+              <div style={{ fontSize: 11, color: '#0369a1', backgroundColor: '#dbeafe', padding: '3px 7px', borderRadius: 4 }}>
+                {schedule}
               </div>
-              <div>
-                <label style={s.fieldLabel}>Strength</label>
-                <input style={s.input} value={form.strength} placeholder="e.g. 500mg"
-                  onChange={e => setForm(f => ({ ...f, strength: e.target.value }))} />
-              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, fontSize: 11, flexWrap: 'wrap' }}>
+              {foodLabel && (
+                <span style={{ backgroundColor: '#f0fdf4', color: '#16a34a', padding: '2px 6px', borderRadius: 4 }}>
+                  {foodLabel}
+                </span>
+              )}
+              <span style={{ color: 'var(--text-muted)' }}>
+                Stock: <strong style={{ color: 'var(--text)' }}>{parseFloat(med.current_stock)} {med.unit}</strong>
+              </span>
+              <span style={{ color: med.alert_level === 'critical' ? '#dc2626' : med.alert_level === 'low' ? '#d97706' : 'var(--text-muted)' }}>
+                {daysText}
+              </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Type</label>
-                <select style={s.input} value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                  {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={s.fieldLabel}>Unit</label>
-                <select style={s.input} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
-                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Schedule — checkboxes with per-slot qty */}
-            <div>
-              <label style={{ ...s.fieldLabel, marginBottom: 6 }}>Schedule *</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
-                border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px',
-                backgroundColor: 'var(--bg-secondary)' }}>
-                {SLOTS.map(sl => {
-                  const onKey = sl.key.replace('_dose', '_on');
-                  const isOn = form[onKey];
-                  return (
-                    <div key={sl.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <input
-                        type="checkbox"
-                        id={sl.key}
-                        checked={isOn}
-                        onChange={e => setForm(f => ({ ...f, [onKey]: e.target.checked }))}
-                      />
-                      <label htmlFor={sl.key} style={{ width: 90, fontSize: 13, marginBottom: 0, cursor: 'pointer' }}>
-                        {sl.icon} {sl.label}
-                      </label>
-                      <input
-                        style={{ ...s.input, width: 70, margin: 0, opacity: isOn ? 1 : 0.4 }}
-                        type="number" min="0.5" step="0.5"
-                        placeholder="qty"
-                        disabled={!isOn}
-                        value={form[sl.key]}
-                        onChange={e => setForm(f => ({ ...f, [sl.key]: e.target.value }))}
-                      />
-                      <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>{form.unit || 'units'}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label style={s.fieldLabel}>With Food?</label>
-              <select style={s.input} value={form.food_relation} onChange={e => setForm(f => ({ ...f, food_relation: e.target.value }))}>
-                <option value="before_food">🚫 Before Food</option>
-                <option value="after_food">✓ After Food</option>
-                <option value="with_food">🍽️ With Food</option>
-                <option value="no_restriction">✨ No Restriction</option>
-              </select>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Current Stock</label>
-                <input style={s.input} type="number" min="0" step="1" value={form.current_stock}
-                  onChange={e => setForm(f => ({ ...f, current_stock: e.target.value }))} />
-              </div>
-              <div>
-                <label style={s.fieldLabel}>Low Stock Alert At</label>
-                <input style={s.input} type="number" min="0" step="1" value={form.low_stock_threshold}
-                  onChange={e => setForm(f => ({ ...f, low_stock_threshold: e.target.value }))} />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Prescribed By</label>
-                <input style={s.input} value={form.prescribed_by} placeholder="e.g. Dr. Sharma"
-                  onChange={e => setForm(f => ({ ...f, prescribed_by: e.target.value }))} />
-              </div>
-              <div>
-                <label style={s.fieldLabel}>Specialty</label>
-                <input style={s.input} value={form.specialty} placeholder="e.g. Cardiology"
-                  onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} />
-              </div>
-            </div>
-
-            <div>
-              <label style={s.fieldLabel}>Patient (optional)</label>
-              <select style={s.input} value={form.patient || ''}
-                onChange={e => setForm(f => ({ ...f, patient: e.target.value ? parseInt(e.target.value, 10) : null }))}>
-                <option value="">— Household / General —</option>
-                {patients.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.relation})</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button style={{ ...s.saveBtn, flex: 1, marginTop: 0 }} onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : editId ? 'Update Medicine' : 'Add Medicine'}
-              </button>
-              {editId && <button style={s.cancelBtn} onClick={resetForm}>Cancel</button>}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button style={{ ...s.secondaryBtn, fontSize: 12, padding: '4px 10px' }} onClick={() => openStockModal('add_stock', med)}>➕ Add Stock</button>
+              <button style={{ ...s.iconBtn }} onClick={() => openStockModal('adjust', med)}>✏ Adjust</button>
+              <button style={{ ...s.iconBtn }} onClick={() => startEdit(med)}>📝 Edit</button>
+              <button style={{ ...s.iconBtn, color: '#dc2626' }} onClick={() => handleDelete(med.id)}>🗑</button>
             </div>
           </div>
+        );
+      })}
+
+      {/* Add / Edit Medicine Modal */}
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? '📝 Edit Medicine' : '➕ Add Medicine'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update Medicine' : 'Add Medicine'} saving={saving}>
+        <div className="form-grid">
+          <label>Medicine Name *
+            <input style={s.input} value={form.medicine_name} placeholder="e.g. Metformin"
+              onChange={e => setForm(f => ({ ...f, medicine_name: e.target.value }))} />
+          </label>
+          <label>Brand Name
+            <input style={s.input} value={form.brand_name} placeholder="e.g. Glycomet"
+              onChange={e => setForm(f => ({ ...f, brand_name: e.target.value }))} />
+          </label>
+          <label>Strength
+            <input style={s.input} value={form.strength} placeholder="e.g. 500mg"
+              onChange={e => setForm(f => ({ ...f, strength: e.target.value }))} />
+          </label>
+          <label>Type
+            <select style={s.input} value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+              {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>Unit
+            <select style={s.input} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
+              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </label>
+
+          {/* Schedule */}
+          <label style={{ gap: 6 }}>
+            Schedule
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
+              border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px',
+              backgroundColor: 'var(--bg-secondary)' }}>
+              {SLOTS.map(sl => {
+                const onKey = sl.key.replace('_dose', '_on');
+                const isOn = form[onKey];
+                return (
+                  <div key={sl.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" id={sl.key} checked={isOn}
+                      onChange={e => setForm(f => ({ ...f, [onKey]: e.target.checked }))}
+                      style={{ width: 18, height: 18, minHeight: 'unset', flexShrink: 0 }} />
+                    <label htmlFor={sl.key} style={{ width: 90, fontSize: 13, marginBottom: 0, cursor: 'pointer', flexDirection: 'column', gap: 0 }}>
+                      {sl.icon} {sl.label}
+                    </label>
+                    <input
+                      style={{ ...s.input, width: 70, margin: 0, opacity: isOn ? 1 : 0.4 }}
+                      type="number" min="0.5" step="0.5"
+                      placeholder="qty"
+                      disabled={!isOn}
+                      value={form[sl.key]}
+                      onChange={e => setForm(f => ({ ...f, [sl.key]: e.target.value }))}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>{form.unit || 'units'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </label>
+
+          <label>With Food?
+            <select style={s.input} value={form.food_relation} onChange={e => setForm(f => ({ ...f, food_relation: e.target.value }))}>
+              <option value="before_food">🚫 Before Food</option>
+              <option value="after_food">✓ After Food</option>
+              <option value="with_food">🍽️ With Food</option>
+              <option value="no_restriction">✨ No Restriction</option>
+            </select>
+          </label>
+          <label>Current Stock
+            <input style={s.input} type="number" min="0" step="1" value={form.current_stock}
+              onChange={e => setForm(f => ({ ...f, current_stock: e.target.value }))} />
+          </label>
+          <label>Low Stock Alert At
+            <input style={s.input} type="number" min="0" step="1" value={form.low_stock_threshold}
+              onChange={e => setForm(f => ({ ...f, low_stock_threshold: e.target.value }))} />
+          </label>
+          <label>Prescribed By
+            <input style={s.input} value={form.prescribed_by} placeholder="e.g. Dr. Sharma"
+              onChange={e => setForm(f => ({ ...f, prescribed_by: e.target.value }))} />
+          </label>
+          <label>Specialty
+            <input style={s.input} value={form.specialty} placeholder="e.g. Cardiology"
+              onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} />
+          </label>
+          <label>Patient (optional)
+            <select style={s.input} value={form.patient || ''}
+              onChange={e => setForm(f => ({ ...f, patient: e.target.value ? parseInt(e.target.value, 10) : null }))}>
+              <option value="">— Household / General —</option>
+              {patients.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.relation})</option>
+              ))}
+            </select>
+          </label>
         </div>
-      </div>
+      </Modal>
+
+      {/* Stock Add / Adjust Modal */}
+      <Modal
+        open={!!stockModal}
+        onClose={() => setStockModal(null)}
+        title={stockModal?.type === 'add_stock' ? '➕ Add Stock' : '✏ Adjust Stock'}
+        onSave={handleModalAction}
+        saveLabel={modalSaving ? 'Saving…' : 'Confirm'}
+        saving={modalSaving}>
+        {stockModal && (
+          <div className="form-grid">
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
+              {stockModal.medicine.medicine_name}{stockModal.medicine.strength ? ` ${stockModal.medicine.strength}` : ''}
+            </div>
+            <label>{stockModal.type === 'adjust' ? 'Quantity (use − for reduction)' : 'Quantity'}
+              <input style={s.input} type="number" step="0.5" value={modalQty}
+                onChange={e => setModalQty(e.target.value)} />
+            </label>
+            <label>Notes (optional)
+              <input style={s.input} value={modalNotes} onChange={e => setModalNotes(e.target.value)}
+                placeholder="e.g. Purchased from pharmacy" />
+            </label>
+          </div>
+        )}
+      </Modal>
     </div>
-
-    {/* Modal overlay */}
-    {modal && (
-      <div style={{
-        position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-      }} onClick={() => setModal(null)}>
-        <div style={{
-          backgroundColor: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 14, padding: 20, width: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-        }} onClick={e => e.stopPropagation()}>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-            {modal.type === 'add_stock' ? '➕ Add Stock' : '✏ Adjust Stock'}
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-            {modal.medicine.medicine_name}{modal.medicine.strength ? ` ${modal.medicine.strength}` : ''}
-          </div>
-
-          <div style={{ marginBottom: 10 }}>
-            <label style={s.fieldLabel}>{modal.type === 'adjust' ? 'Quantity (use − for reduction)' : 'Quantity'}</label>
-            <input style={s.input} type="number"
-              step="0.5"
-              value={modalQty}
-              onChange={e => setModalQty(e.target.value)}
-            />
-          </div>
-
-          <div style={{ marginBottom: 14 }}>
-            <label style={s.fieldLabel}>Notes (optional)</label>
-            <input style={s.input} value={modalNotes} onChange={e => setModalNotes(e.target.value)}
-              placeholder="e.g. Purchased from pharmacy" />
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button style={{ ...s.saveBtn, flex: 1, marginTop: 0 }} onClick={handleModalAction} disabled={modalSaving}>
-              {modalSaving ? 'Saving…' : 'Confirm'}
-            </button>
-            <button style={s.cancelBtn} onClick={() => setModal(null)}>Cancel</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </>
   );
 }

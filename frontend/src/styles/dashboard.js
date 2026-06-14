@@ -72,4 +72,9 @@ export const styles = {
   receipt:         { backgroundColor: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '20px 16px', maxWidth: 360, margin: '0 auto', fontFamily: 'monospace', color: 'var(--text)' },
   receiptDivider:  { borderTop: '1px dashed var(--border)', margin: '8px 0' },
   receiptSummary:  { fontSize: 13, display: 'flex', flexDirection: 'column', gap: 3 },
+
+  /* Modal form helpers */
+  fGroup:     { display: 'flex', flexDirection: 'column', gap: 5 },
+  fLabel:     { fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 },
+  addBtn:     { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', minHeight: 44 },
 };

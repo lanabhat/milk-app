@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const PAYMENT_METHODS = ['cash', 'card', 'upi', 'insurance', 'other'];
 const PM_LABELS = { cash: '💵 Cash', card: '💳 Card', upi: '📱 UPI', insurance: '🏥 Insurance', other: 'Other' };
@@ -69,6 +70,7 @@ export default function ConsultingTab({ patients = [], showToast, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchRecords = useCallback(async () => {
     const headers = getAuthHeaders();
@@ -87,7 +89,7 @@ export default function ConsultingTab({ patients = [], showToast, onSaved }) {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  const resetForm = () => { setForm(emptyForm(patients)); setEditId(null); };
+  const resetForm = () => { setForm(emptyForm(patients)); setEditId(null); setModalOpen(false); };
 
   const setNextFromInterval = (days) => {
     const base = form.consultation_date || new Date().toISOString().slice(0, 10);
@@ -154,13 +156,13 @@ export default function ConsultingTab({ patients = [], showToast, onSaved }) {
       notes: r.notes || '',
       instructions: r.instructions || '',
     });
+    setModalOpen(true);
   };
 
   const filtered = patientFilter === 'all'
     ? records
     : records.filter(r => String(r.patient) === patientFilter);
 
-  // Detect close-date clusters for "combine visits" hint
   const upcomingWithHint = upcoming.map((rec, i) => {
     const days = rec.days_until_next;
     const others = upcoming.filter((o, j) => j !== i && o.days_until_next !== null && Math.abs((o.days_until_next || 0) - (days || 0)) <= 3);
@@ -205,189 +207,185 @@ export default function ConsultingTab({ patients = [], showToast, onSaved }) {
         </div>
       )}
 
-      <div style={s.twoPanel}>
-        {/* Left — records */}
-        <div style={s.productsPanel}>
-          <div style={s.panelTitle}>🩺 Consultations <span style={s.cartBadge}>{filtered.length}</span></div>
-
-          {/* Patient filter */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-            <button onClick={() => setPatientFilter('all')} style={{
-              fontSize: 12, padding: '4px 10px', borderRadius: 16, cursor: 'pointer',
-              backgroundColor: patientFilter === 'all' ? 'var(--primary)' : 'var(--bg-secondary)',
-              color: patientFilter === 'all' ? 'white' : 'var(--text)',
-              border: `1px solid ${patientFilter === 'all' ? 'var(--primary)' : 'var(--border)'}`,
-              fontWeight: patientFilter === 'all' ? 600 : 400,
-            }}>All</button>
-            {patients.map(p => (
-              <button key={p.id} onClick={() => setPatientFilter(String(p.id))} style={{
-                fontSize: 12, padding: '4px 10px', borderRadius: 16, cursor: 'pointer',
-                backgroundColor: patientFilter === String(p.id) ? '#60a5fa' : 'var(--bg-secondary)',
-                color: patientFilter === String(p.id) ? 'white' : 'var(--text)',
-                border: `1px solid ${patientFilter === String(p.id) ? '#60a5fa' : 'var(--border)'}`,
-                fontWeight: patientFilter === String(p.id) ? 600 : 400,
-              }}>{p.name}</button>
-            ))}
-          </div>
-
-          {loading && <div style={s.empty}>Loading…</div>}
-          {!loading && filtered.length === 0 && <div style={s.empty}>No consultation records yet.</div>}
-
-          {filtered.map(rec => {
-            const isOpen = expandedId === rec.id;
-            const days = rec.days_until_next;
-            return (
-              <div key={rec.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 4, marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 700 }}>Dr. {rec.doctor_name}</span>
-                    {rec.specialty && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>{rec.specialty}</span>}
-                    <div style={{ fontSize: 11, marginTop: 2 }}>
-                      <span style={{ backgroundColor: '#eff6ff', color: '#0369a1', padding: '1px 5px', borderRadius: 4 }}>
-                        👤 {rec.patient_name}
-                      </span>
-                      {rec.hospital && <span style={{ color: 'var(--text-faint)', marginLeft: 6 }}>🏥 {rec.hospital}</span>}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>{formatDate(rec.consultation_date)}</div>
-                    {rec.fee > 0 && <div style={{ fontWeight: 700, color: 'var(--accent)' }}>₹{parseFloat(rec.fee).toFixed(0)}</div>}
-                  </div>
-                </div>
-
-                {rec.next_appointment_date && (
-                  <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-faint)' }}>Next:</span>
-                    <span style={urgencyStyle(days)}>{formatDate(rec.next_appointment_date)} ({daysLabel(days)})</span>
-                  </div>
-                )}
-
-                {isOpen && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {rec.notes && <div><strong>Notes:</strong> {rec.notes}</div>}
-                    {rec.instructions && (
-                      <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px', color: '#92400e' }}>
-                        ⚠️ <strong>Instructions:</strong> {rec.instructions}
-                      </div>
-                    )}
-                    <div>{PM_LABELS[rec.payment_method]}</div>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                  <button style={s.iconBtn} onClick={() => setExpandedId(isOpen ? null : rec.id)}>
-                    {isOpen ? '▲ Less' : '▼ More'}
-                  </button>
-                  <button style={s.iconBtn} onClick={() => startEdit(rec)}>✏ Edit</button>
-                  <button style={{ ...s.iconBtn, color: '#dc2626' }} onClick={() => handleDelete(rec.id)}>🗑</button>
-                </div>
-              </div>
-            );
-          })}
+      {/* Header row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button onClick={() => setPatientFilter('all')} style={{
+            fontSize: 13, padding: '6px 14px', borderRadius: 16, cursor: 'pointer',
+            backgroundColor: patientFilter === 'all' ? 'var(--primary)' : 'var(--bg-secondary)',
+            color: patientFilter === 'all' ? 'white' : 'var(--text)',
+            border: `1px solid ${patientFilter === 'all' ? 'var(--primary)' : 'var(--border)'}`,
+            fontWeight: patientFilter === 'all' ? 600 : 400, minHeight: 36,
+          }}>All</button>
+          {patients.map(p => (
+            <button key={p.id} onClick={() => setPatientFilter(String(p.id))} style={{
+              fontSize: 13, padding: '6px 14px', borderRadius: 16, cursor: 'pointer',
+              backgroundColor: patientFilter === String(p.id) ? '#60a5fa' : 'var(--bg-secondary)',
+              color: patientFilter === String(p.id) ? 'white' : 'var(--text)',
+              border: `1px solid ${patientFilter === String(p.id) ? '#60a5fa' : 'var(--border)'}`,
+              fontWeight: patientFilter === String(p.id) ? 600 : 400, minHeight: 36,
+            }}>{p.name}</button>
+          ))}
         </div>
+        <button style={s.addBtn} onClick={() => { setForm(emptyForm(patients)); setEditId(null); setModalOpen(true); }}>
+          + Add Consultation
+        </button>
+      </div>
 
-        {/* Right — add/edit form */}
-        <div style={s.cartPanel}>
-          <div style={s.panelTitle}>{editId ? '✏ Edit Consultation' : '➕ Add Consultation'}</div>
+      {/* Records list */}
+      {loading && <div style={s.empty}>Loading…</div>}
+      {!loading && filtered.length === 0 && <div style={s.empty}>No consultation records yet.</div>}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div>
-              <label style={s.fieldLabel}>Patient *</label>
-              <select style={s.input} value={form.patient}
-                onChange={e => setForm(f => ({ ...f, patient: e.target.value }))}>
-                <option value="">— Select —</option>
-                {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label style={s.fieldLabel}>Doctor Name *</label>
-              <input style={s.input} value={form.doctor_name} placeholder="e.g. Dr. Sharma"
-                onChange={e => setForm(f => ({ ...f, doctor_name: e.target.value }))} />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Specialty</label>
-                <input style={s.input} value={form.specialty} placeholder="e.g. Cardiology"
-                  onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {filtered.map(rec => {
+          const isOpen = expandedId === rec.id;
+          const days = rec.days_until_next;
+          return (
+            <div key={rec.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 700 }}>Dr. {rec.doctor_name}</span>
+                  {rec.specialty && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>{rec.specialty}</span>}
+                  <div style={{ fontSize: 11, marginTop: 2 }}>
+                    <span style={{ backgroundColor: '#eff6ff', color: '#0369a1', padding: '1px 5px', borderRadius: 4 }}>
+                      👤 {rec.patient_name}
+                    </span>
+                    {rec.hospital && <span style={{ color: 'var(--text-faint)', marginLeft: 6 }}>🏥 {rec.hospital}</span>}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>{formatDate(rec.consultation_date)}</div>
+                  {rec.fee > 0 && <div style={{ fontWeight: 700, color: 'var(--accent)' }}>₹{parseFloat(rec.fee).toFixed(0)}</div>}
+                </div>
               </div>
-              <div>
-                <label style={s.fieldLabel}>Hospital / Clinic</label>
-                <input style={s.input} value={form.hospital} placeholder="e.g. Apollo"
-                  onChange={e => setForm(f => ({ ...f, hospital: e.target.value }))} />
-              </div>
-            </div>
 
-            <div>
-              <label style={s.fieldLabel}>Consultation Date *</label>
-              <input style={s.input} type="date" value={form.consultation_date}
-                onChange={e => setForm(f => ({ ...f, consultation_date: e.target.value }))} />
-            </div>
-
-            {/* Next appointment quick-pick */}
-            <div>
-              <label style={s.fieldLabel}>Next Appointment</label>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-                {NEXT_INTERVALS.map(({ label, days }) => (
-                  <button key={days} onClick={() => setNextFromInterval(days)} style={{
-                    fontSize: 11, padding: '4px 8px', borderRadius: 6, cursor: 'pointer',
-                    backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text)',
-                  }}>{label}</button>
-                ))}
-                <button onClick={() => setForm(f => ({ ...f, next_appointment_date: '' }))} style={{
-                  fontSize: 11, padding: '4px 8px', borderRadius: 6, cursor: 'pointer',
-                  backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-muted)',
-                }}>Clear</button>
-              </div>
-              <input style={s.input} type="date" value={form.next_appointment_date}
-                onChange={e => setForm(f => ({ ...f, next_appointment_date: e.target.value }))} />
-              {form.next_appointment_date && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  📅 Next: <strong>{formatDate(form.next_appointment_date)}</strong>
-                  {' '}({daysLabel(daysUntil(form.next_appointment_date))})
+              {rec.next_appointment_date && (
+                <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-faint)' }}>Next:</span>
+                  <span style={urgencyStyle(days)}>{formatDate(rec.next_appointment_date)} ({daysLabel(days)})</span>
                 </div>
               )}
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={s.fieldLabel}>Fee (₹)</label>
-                <input style={s.input} type="number" min="0" step="0.01" value={form.fee} placeholder="0"
-                  onChange={e => setForm(f => ({ ...f, fee: e.target.value }))} />
+              {isOpen && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {rec.notes && <div><strong>Notes:</strong> {rec.notes}</div>}
+                  {rec.instructions && (
+                    <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px', color: '#92400e' }}>
+                      ⚠️ <strong>Instructions:</strong> {rec.instructions}
+                    </div>
+                  )}
+                  <div>{PM_LABELS[rec.payment_method]}</div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                <button style={s.iconBtn} onClick={() => setExpandedId(isOpen ? null : rec.id)}>
+                  {isOpen ? '▲ Less' : '▼ More'}
+                </button>
+                <button style={s.iconBtn} onClick={() => startEdit(rec)}>✏ Edit</button>
+                <button style={{ ...s.iconBtn, color: '#dc2626' }} onClick={() => handleDelete(rec.id)}>🗑</button>
               </div>
-              <div>
-                <label style={s.fieldLabel}>Payment</label>
-                <select style={s.input} value={form.payment_method}
-                  onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
-                  {PAYMENT_METHODS.map(m => <option key={m} value={m}>{PM_LABELS[m]}</option>)}
-                </select>
-              </div>
             </div>
-
-            <div>
-              <label style={s.fieldLabel}>Your Notes</label>
-              <textarea style={{ ...s.input, minHeight: 64, resize: 'vertical' }}
-                value={form.notes} placeholder="Notes from the visit…"
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-            </div>
-
-            <div>
-              <label style={s.fieldLabel}>Special Instructions ⚠️</label>
-              <textarea style={{ ...s.input, minHeight: 64, resize: 'vertical', borderColor: '#fde68a', backgroundColor: '#fef9ec' }}
-                value={form.instructions} placeholder="Doctor's special instructions to remember…"
-                onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} />
-            </div>
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ ...s.saveBtn, flex: 1, marginTop: 0 }} onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : editId ? 'Update' : '💾 Save'}
-              </button>
-              {editId && <button style={s.cancelBtn} onClick={resetForm}>Cancel</button>}
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
+
+      {/* Add / Edit Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={resetForm}
+        title={editId ? 'Edit Consultation' : 'Add Consultation'}
+        onSave={handleSave}
+        saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Save'}
+        saving={saving}
+      >
+        <div className="form-grid">
+          <label>
+            Patient *
+            <select style={s.input} value={form.patient}
+              onChange={e => setForm(f => ({ ...f, patient: e.target.value }))}>
+              <option value="">— Select —</option>
+              {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Doctor Name *
+            <input style={s.input} value={form.doctor_name} placeholder="e.g. Dr. Sharma"
+              onChange={e => setForm(f => ({ ...f, doctor_name: e.target.value }))} />
+          </label>
+
+          <label>
+            Specialty
+            <input style={s.input} value={form.specialty} placeholder="e.g. Cardiology"
+              onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} />
+          </label>
+
+          <label>
+            Hospital / Clinic
+            <input style={s.input} value={form.hospital} placeholder="e.g. Apollo"
+              onChange={e => setForm(f => ({ ...f, hospital: e.target.value }))} />
+          </label>
+
+          <label>
+            Consultation Date *
+            <input style={s.input} type="date" value={form.consultation_date}
+              onChange={e => setForm(f => ({ ...f, consultation_date: e.target.value }))} />
+          </label>
+
+          <label>
+            Next Appointment
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+              {NEXT_INTERVALS.map(({ label, days }) => (
+                <button key={days} onClick={() => setNextFromInterval(days)} style={{
+                  fontSize: 12, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+                  backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text)',
+                }}>{label}</button>
+              ))}
+              <button onClick={() => setForm(f => ({ ...f, next_appointment_date: '' }))} style={{
+                fontSize: 12, padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+                backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+              }}>Clear</button>
+            </div>
+            <input style={s.input} type="date" value={form.next_appointment_date}
+              onChange={e => setForm(f => ({ ...f, next_appointment_date: e.target.value }))} />
+            {form.next_appointment_date && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                📅 Next: <strong>{formatDate(form.next_appointment_date)}</strong>
+                {' '}({daysLabel(daysUntil(form.next_appointment_date))})
+              </div>
+            )}
+          </label>
+
+          <label>
+            Fee (₹)
+            <input style={s.input} type="number" min="0" step="0.01" value={form.fee} placeholder="0"
+              onChange={e => setForm(f => ({ ...f, fee: e.target.value }))} />
+          </label>
+
+          <label>
+            Payment Method
+            <select style={s.input} value={form.payment_method}
+              onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{PM_LABELS[m]}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Your Notes
+            <textarea style={{ ...s.input, minHeight: 72, resize: 'vertical' }}
+              value={form.notes} placeholder="Notes from the visit…"
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </label>
+
+          <label>
+            Special Instructions ⚠️
+            <textarea style={{ ...s.input, minHeight: 72, resize: 'vertical', borderColor: '#fde68a', backgroundColor: '#fef9ec' }}
+              value={form.instructions} placeholder="Doctor's special instructions to remember…"
+              onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} />
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

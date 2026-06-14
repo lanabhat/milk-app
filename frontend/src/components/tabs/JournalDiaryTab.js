@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD, todayStr } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const EMPTY_FORM = { title: '', content: '', owner: '', tags: '', entry_date: todayStr(), related_trip: '' };
 
 export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }) {
   const [entries, setEntries]       = useState([]);
   const [loading, setLoading]       = useState(false);
-  const [showForm, setShowForm]     = useState(false);
+  const [modalOpen, setModalOpen]   = useState(false);
   const [form, setForm]             = useState(EMPTY_FORM);
   const [editId, setEditId]         = useState(null);
   const [saving, setSaving]         = useState(false);
@@ -47,15 +48,16 @@ export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openAdd = () => { setEditId(null); setForm(EMPTY_FORM); setShowForm(true); };
+  const openAdd = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(true); };
   const openEdit = (e) => {
     setEditId(e.id);
     setForm({ title: e.title, content: e.content || '', owner: e.owner ? String(e.owner) : '', tags: e.tags || '', entry_date: e.entry_date, related_trip: e.related_trip ? String(e.related_trip) : '' });
-    setShowForm(true); setExpandId(null);
+    setModalOpen(true); setExpandId(null);
   };
 
-  const handleSubmit = async (ev) => {
-    ev.preventDefault();
+  const resetForm = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(false); };
+
+  const handleSave = async () => {
     if (!form.title.trim()) { showToast('Title required', 'error'); return; }
     setSaving(true);
     const headers = getAuthHeaders();
@@ -67,7 +69,7 @@ export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Entry saved');
-      setShowForm(false); setEditId(null); fetchEntries(); onSaved();
+      resetForm(); fetchEntries(); onSaved();
     } catch { showToast('Failed to save', 'error'); }
     finally { setSaving(false); }
   };
@@ -114,7 +116,6 @@ export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }
     fetchEntries();
   };
 
-  // Group by entry_date
   const grouped = entries.reduce((acc, e) => {
     if (!acc[e.entry_date]) acc[e.entry_date] = [];
     acc[e.entry_date].push(e);
@@ -138,40 +139,10 @@ export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
-        <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : openAdd}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 14px', backgroundColor: showForm ? '#64748b' : '#7e22ce' }}>
-          {showForm ? '✕ Cancel' : '📓 New Entry'}
+        <button onClick={openAdd} style={{ ...s.addBtn, backgroundColor: '#7e22ce' }}>
+          📓 New Entry
         </button>
       </div>
-
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14, borderLeft: '4px solid #7e22ce' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit Entry' : 'New Diary Entry'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Title *</label><input style={s.input} value={form.title} onChange={e => setF('title', e.target.value)} placeholder="What's on your mind?" /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Entry</label><textarea style={{ ...s.input, height: 100, resize: 'vertical' }} value={form.content} onChange={e => setF('content', e.target.value)} placeholder="Write your diary entry here…" /></div>
-            <div><label style={s.fieldLabel}>Date</label><input style={s.input} type="date" value={form.entry_date} onChange={e => setF('entry_date', e.target.value)} /></div>
-            <div>
-              <label style={s.fieldLabel}>Author (optional)</label>
-              <select style={s.input} value={form.owner} onChange={e => setF('owner', e.target.value)}>
-                <option value="">—</option>
-                {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Linked Trip (optional)</label>
-              <select style={s.input} value={form.related_trip} onChange={e => setF('related_trip', e.target.value)}>
-                <option value="">— none —</option>
-                {trips.map(t => <option key={t.id} value={String(t.id)}>{t.title} ({t.trip_date})</option>)}
-              </select>
-            </div>
-            <div><label style={s.fieldLabel}>Tags</label><input style={s.input} value={form.tags} onChange={e => setF('tags', e.target.value)} placeholder="travel, family, work…" /></div>
-          </div>
-          <button type="submit" disabled={saving} style={{ ...s.primaryBtn, width: '100%', marginTop: 10, backgroundColor: '#7e22ce' }}>
-            {saving ? 'Saving…' : editId ? '✓ Update' : '✓ Save Entry'}
-          </button>
-        </form>
-      )}
 
       {loading && <p style={s.empty}>Loading…</p>}
       {!loading && entries.length === 0 && (
@@ -224,7 +195,7 @@ export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }
                       <button onClick={() => handleDelete(entry.id)} style={{ ...s.primaryBtn, fontSize: 11, padding: '5px 10px', backgroundColor: '#ef4444' }}>🗑 Delete</button>
                     </div>
 
-                    {/* Notes */}
+                    {/* Inline notes */}
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Notes ({entry.notes?.length || 0})</div>
                       {entry.notes?.map(n => (
@@ -239,7 +210,7 @@ export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }
                       </div>
                     </div>
 
-                    {/* Expenses */}
+                    {/* Inline expenses */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Expenses ({entry.expenses?.length || 0}){entry.expense_total > 0 && ` · ₹${fmt(entry.expense_total)}`}</div>
@@ -279,6 +250,37 @@ export default function JournalDiaryTab({ family, vehicles, showToast, onSaved }
           })}
         </div>
       ))}
+
+      {/* Add / Edit Entry Modal */}
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Entry' : 'New Diary Entry'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? '✓ Update' : '✓ Save Entry'} saving={saving}>
+        <div className="form-grid">
+          <label>Title *
+            <input style={s.input} value={form.title} onChange={e => setF('title', e.target.value)} placeholder="What's on your mind?" />
+          </label>
+          <label>Entry
+            <textarea style={{ ...s.input, height: 100, resize: 'vertical' }} value={form.content} onChange={e => setF('content', e.target.value)} placeholder="Write your diary entry here…" />
+          </label>
+          <label>Date
+            <input style={s.input} type="date" value={form.entry_date} onChange={e => setF('entry_date', e.target.value)} />
+          </label>
+          <label>Author (optional)
+            <select style={s.input} value={form.owner} onChange={e => setF('owner', e.target.value)}>
+              <option value="">—</option>
+              {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
+            </select>
+          </label>
+          <label>Linked Trip (optional)
+            <select style={s.input} value={form.related_trip} onChange={e => setF('related_trip', e.target.value)}>
+              <option value="">— none —</option>
+              {trips.map(t => <option key={t.id} value={String(t.id)}>{t.title} ({t.trip_date})</option>)}
+            </select>
+          </label>
+          <label>Tags
+            <input style={s.input} value={form.tags} onChange={e => setF('tags', e.target.value)} placeholder="travel, family, work…" />
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

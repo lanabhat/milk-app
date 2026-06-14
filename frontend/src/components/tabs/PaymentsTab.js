@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { todayStr, fmt, fmtD } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 export default function PaymentsTab({ advances, balance, purchases, showToast, onSaved }) {
+  const [modalOpen, setModalOpen] = useState(false);
   const [advAmount, setAdvAmount] = useState('');
   const [advBalPaid, setAdvBalPaid] = useState('');
   const [advDate, setAdvDate] = useState(todayStr());
@@ -17,9 +19,13 @@ export default function PaymentsTab({ advances, balance, purchases, showToast, o
   const cyclePurchasesTotal = (adv) =>
     purchases.filter(p => p.advance === adv.id).reduce((s, p) => s + parseFloat(p.total), 0);
 
-  const handleAddAdvance = async (e) => {
-    e.preventDefault();
-    if (!advAmount) return;
+  const resetForm = () => {
+    setAdvAmount(''); setAdvBalPaid(''); setAdvDesc('');
+    setAdvDate(todayStr()); setModalOpen(false);
+  };
+
+  const handleSave = async () => {
+    if (!advAmount) return showToast('Enter an advance amount', 'error');
     const headers = getAuthHeaders();
     if (!headers) return;
     setAdvSaving(true);
@@ -34,7 +40,7 @@ export default function PaymentsTab({ advances, balance, purchases, showToast, o
         }),
       });
       if (res.ok) {
-        setAdvAmount(''); setAdvBalPaid(''); setAdvDesc('');
+        resetForm();
         showToast('✓ Payment recorded! New cycle started.');
         onSaved();
       } else showToast('Error recording payment', 'error');
@@ -53,70 +59,16 @@ export default function PaymentsTab({ advances, balance, purchases, showToast, o
 
   return (
     <div style={s.section}>
-      <h3 style={s.sectionTitle}>Record a Payment</h3>
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b' }}>
-        Each payment starts a new cycle. Record the new advance and any extra paid to clear dues.
-      </p>
-
-      <form onSubmit={handleAddAdvance} style={s.card}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-          <div>
-            <label style={s.fieldLabel}>New Advance (₹) <span style={{ color: '#dc2626' }}>*</span></label>
-            <input type="number" min="0" placeholder="e.g. 1000" value={advAmount}
-              onChange={e => setAdvAmount(e.target.value)} style={s.input} required />
-          </div>
-          <div>
-            <label style={s.fieldLabel}>Balance Paid (₹) <span style={{ color: '#94a3b8', fontWeight: 400 }}>to clear previous dues</span></label>
-            <input type="number" min="0" placeholder="e.g. 100 (optional)" value={advBalPaid}
-              onChange={e => setAdvBalPaid(e.target.value)} style={s.input} />
-          </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-          <div>
-            <label style={s.fieldLabel}>Date</label>
-            <input type="date" value={advDate} onChange={e => setAdvDate(e.target.value)} style={s.input} required />
-          </div>
-          <div>
-            <label style={s.fieldLabel}>Note (optional)</label>
-            <input type="text" placeholder="UPI, cash…" value={advDesc}
-              onChange={e => setAdvDesc(e.target.value)} style={s.input} />
-          </div>
-        </div>
-
-        {/* Preview */}
-        {(advAmount || advBalPaid) && (
-          <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>New advance for this cycle</span>
-              <strong>₹{fmt(parseFloat(advAmount || 0))}</strong>
-            </div>
-            {parseFloat(advBalPaid || 0) > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                <span>+ Balance paid to clear dues</span>
-                <span>₹{fmt(parseFloat(advBalPaid || 0))}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #86efac', paddingTop: 6, marginTop: 6 }}>
-              <span>Total you'll pay vendor</span>
-              <span>₹{fmt(parseFloat(advAmount || 0) + parseFloat(advBalPaid || 0))}</span>
-            </div>
-            {balance && balance.current_balance !== undefined && (
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                Previous cycle balance: {balance.current_balance >= 0
-                  ? `₹${fmt(balance.current_balance)} remaining with you`
-                  : `₹${fmt(Math.abs(balance.current_balance))} owed to vendor`}
-              </div>
-            )}
-          </div>
-        )}
-
-        <button type="submit" disabled={advSaving} style={s.primaryBtn}>
-          {advSaving ? 'Saving…' : '✓ Record Payment & Start New Cycle'}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+          Each payment starts a new cycle — record the advance + any dues cleared.
+        </p>
+        <button onClick={() => setModalOpen(true)} style={s.addBtn}>
+          + Record Payment
         </button>
-      </form>
+      </div>
 
-      {/* All payment cycles */}
-      <h3 style={{ ...s.sectionTitle, marginTop: 24 }}>Payment Cycles</h3>
+      <h3 style={{ ...s.sectionTitle, marginTop: 8 }}>Payment Cycles</h3>
       {sortedAdvances.length === 0
         ? <p style={s.empty}>No payments recorded yet.</p>
         : sortedAdvances.map((adv, idx) => {
@@ -164,6 +116,41 @@ export default function PaymentsTab({ advances, balance, purchases, showToast, o
           );
         })
       }
+
+      <Modal open={modalOpen} onClose={resetForm} title="Record Payment & Start New Cycle"
+        onSave={handleSave} saveLabel={advSaving ? 'Saving…' : 'Record Payment'} saving={advSaving}>
+        <div className="form-grid">
+          <label>New Advance (₹) *<input style={s.input} type="number" min="0" placeholder="e.g. 1000" value={advAmount} onChange={e => setAdvAmount(e.target.value)} /></label>
+          <label>Balance Paid (₹) <span style={{ fontSize: 11, fontWeight: 400, color: '#94a3b8' }}>to clear previous dues</span><input style={s.input} type="number" min="0" placeholder="e.g. 100 (optional)" value={advBalPaid} onChange={e => setAdvBalPaid(e.target.value)} /></label>
+          <label>Date<input style={s.input} type="date" value={advDate} onChange={e => setAdvDate(e.target.value)} /></label>
+          <label>Note (optional)<input style={s.input} type="text" placeholder="UPI, cash…" value={advDesc} onChange={e => setAdvDesc(e.target.value)} /></label>
+          {(advAmount || advBalPaid) && (
+            <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>New advance for this cycle</span>
+                <strong>₹{fmt(parseFloat(advAmount || 0))}</strong>
+              </div>
+              {parseFloat(advBalPaid || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
+                  <span>+ Balance paid to clear dues</span>
+                  <span>₹{fmt(parseFloat(advBalPaid || 0))}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #86efac', paddingTop: 6, marginTop: 6 }}>
+                <span>Total you'll pay vendor</span>
+                <span>₹{fmt(parseFloat(advAmount || 0) + parseFloat(advBalPaid || 0))}</span>
+              </div>
+              {balance && balance.current_balance !== undefined && (
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                  Previous cycle balance: {balance.current_balance >= 0
+                    ? `₹${fmt(balance.current_balance)} remaining with you`
+                    : `₹${fmt(Math.abs(balance.current_balance))} owed to vendor`}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

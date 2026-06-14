@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const RELATIONS = ['mom', 'dad', 'son', 'daughter', 'other'];
 const TREATMENTS = ['allopathic', 'ayurvedic', 'homeopathic', 'other'];
@@ -58,7 +59,6 @@ function PatientDetail({ patient, showToast, onBack, medicines, onSaved }) {
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
-  // Medicines belonging to this patient
   const patientMeds = (medicines || []).filter(m => m.patient === patient.id);
   const treatmentStyle = TREATMENT_COLORS[patient.treatment_type] || TREATMENT_COLORS.other;
 
@@ -81,7 +81,6 @@ function PatientDetail({ patient, showToast, onBack, medicines, onSaved }) {
 
   return (
     <div>
-      {/* Back + header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <button onClick={onBack} style={{ ...s.iconBtn, fontSize: 13 }}>← Back</button>
         <div style={{ fontWeight: 700, fontSize: 16 }}>{patient.name}</div>
@@ -94,7 +93,6 @@ function PatientDetail({ patient, showToast, onBack, medicines, onSaved }) {
         </span>
       </div>
 
-      {/* Medicines section */}
       <div style={{ marginBottom: 20 }}>
         <div style={s.panelTitle}>
           💊 Medicines
@@ -148,12 +146,8 @@ function PatientDetail({ patient, showToast, onBack, medicines, onSaved }) {
         })}
       </div>
 
-      {/* History section */}
       <div>
-        <div style={{ ...s.panelTitle, marginBottom: 8 }}>
-          📋 History
-        </div>
-        {/* Filter */}
+        <div style={{ ...s.panelTitle, marginBottom: 8 }}>📋 History</div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           {[['consume', '✔ Taken'], ['add', '➕ Added'], ['adjust', '✏ Adjusted']].map(([type, label]) => (
             <button
@@ -173,9 +167,7 @@ function PatientDetail({ patient, showToast, onBack, medicines, onSaved }) {
         </div>
 
         {loadingHistory && <div style={s.empty}>Loading…</div>}
-        {!loadingHistory && history.length === 0 && (
-          <div style={s.empty}>No history yet.</div>
-        )}
+        {!loadingHistory && history.length === 0 && <div style={s.empty}>No history yet.</div>}
         {!loadingHistory && history.map(tx => {
           const d = new Date(tx.date);
           const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -184,13 +176,9 @@ function PatientDetail({ patient, showToast, onBack, medicines, onSaved }) {
             <div key={tx.id} style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '8px 12px', borderRadius: 8, marginBottom: 6,
-              backgroundColor: 'var(--bg-secondary)',
-              border: '1px solid var(--border)',
+              backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border)',
             }}>
-              <span style={{
-                fontSize: 16, width: 24, textAlign: 'center', flexShrink: 0,
-                color: TX_COLORS[tx.type],
-              }}>
+              <span style={{ fontSize: 16, width: 24, textAlign: 'center', flexShrink: 0, color: TX_COLORS[tx.type] }}>
                 {TX_ICONS[tx.type]}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -214,23 +202,19 @@ function PatientDetail({ patient, showToast, onBack, medicines, onSaved }) {
 }
 
 export default function PatientsTab({ showToast, patients, medicines, onSaved }) {
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [editId, setEditId] = useState(null);
+  const [form, setForm]           = useState(emptyForm);
+  const [saving, setSaving]       = useState(false);
+  const [editId, setEditId]       = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
 
-  const resetForm = () => { setForm(emptyForm); setEditId(null); };
+  const resetForm = () => { setForm(emptyForm); setEditId(null); setModalOpen(false); };
 
   const startEdit = (patient, e) => {
     e.stopPropagation();
     setEditId(patient.id);
-    setForm({
-      name: patient.name,
-      relation: patient.relation,
-      treatment_type: patient.treatment_type,
-      notes: patient.notes || '',
-      active: patient.active,
-    });
+    setForm({ name: patient.name, relation: patient.relation, treatment_type: patient.treatment_type, notes: patient.notes || '', active: patient.active });
+    setModalOpen(true);
   };
 
   const handleSave = async () => {
@@ -243,16 +227,11 @@ export default function PatientsTab({ showToast, patients, medicines, onSaved })
       const method = editId ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method, headers,
-        body: JSON.stringify({
-          name: form.name, relation: form.relation,
-          treatment_type: form.treatment_type, notes: form.notes, active: form.active,
-        }),
+        body: JSON.stringify({ name: form.name, relation: form.relation, treatment_type: form.treatment_type, notes: form.notes, active: form.active }),
       });
       if (res.ok) {
         showToast(editId ? 'Patient updated' : 'Patient added', 'success');
-        resetForm();
-        onSaved();
-        setSelectedPatient(null);
+        resetForm(); onSaved(); setSelectedPatient(null);
       } else {
         const err = await res.json();
         showToast(Object.values(err).flat().join(' '), 'error');
@@ -276,118 +255,90 @@ export default function PatientsTab({ showToast, patients, medicines, onSaved })
 
   const list = patients || [];
 
-  // Drill-down view
   if (selectedPatient) {
-    // Re-find the patient from the live list so medicine_count stays fresh
     const fresh = list.find(p => p.id === selectedPatient.id) || selectedPatient;
     return (
       <div style={{ width: '100%', padding: '0 4px' }}>
-        <PatientDetail
-          patient={fresh}
-          showToast={showToast}
-          onBack={() => setSelectedPatient(null)}
-          medicines={medicines}
-          onSaved={onSaved}
-        />
+        <PatientDetail patient={fresh} showToast={showToast} onBack={() => setSelectedPatient(null)} medicines={medicines} onSaved={onSaved} />
       </div>
     );
   }
 
   return (
     <div style={{ width: '100%' }}>
-      <div style={s.twoPanel}>
-
-        {/* Left — patient list */}
-        <div style={s.productsPanel}>
-          <div style={s.panelTitle}>
-            👤 Patients
-            <span style={s.cartBadge}>{list.length}</span>
-          </div>
-          {list.length === 0 && (
-            <div style={s.empty}>No patients yet. Add one on the right.</div>
-          )}
-          {list.map(patient => {
-            const treatmentStyle = TREATMENT_COLORS[patient.treatment_type] || TREATMENT_COLORS.other;
-            return (
-              <div
-                key={patient.id}
-                onClick={() => setSelectedPatient(patient)}
-                style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 6, cursor: 'pointer' }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{patient.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{RELATION_LABELS[patient.relation] || patient.relation}</div>
-                  </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                    backgroundColor: treatmentStyle.bg, color: treatmentStyle.color,
-                    border: `1px solid ${treatmentStyle.color}20`,
-                  }}>
-                    {treatmentStyle.label}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                  <span>Medicines: <strong style={{ color: 'var(--text)' }}>{patient.medicine_count}</strong></span>
-                  <span>{patient.active ? '✓ Active' : '✗ Inactive'}</span>
-                </div>
-                {patient.notes && (
-                  <div style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic' }}>"{patient.notes}"</div>
-                )}
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button style={{ ...s.saveSmBtn, fontSize: 12 }} onClick={(e) => { e.stopPropagation(); setSelectedPatient(patient); }}>
-                    📋 View History
-                  </button>
-                  <button style={{ ...s.iconBtn }} onClick={(e) => startEdit(patient, e)}>📝 Edit</button>
-                  <button style={{ ...s.iconBtn, color: '#dc2626' }} onClick={(e) => handleDelete(patient.id, e)}>🗑</button>
-                </div>
-              </div>
-            );
-          })}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <div style={s.panelTitle}>
+          👤 Patients
+          <span style={s.cartBadge}>{list.length}</span>
         </div>
-
-        {/* Right — add/edit form */}
-        <div style={s.cartPanel}>
-          <div style={s.panelTitle}>{editId ? '📝 Edit Patient' : '➕ Add Patient'}</div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div>
-              <label style={s.fieldLabel}>Name *</label>
-              <input style={s.input} value={form.name} placeholder="e.g. Mom"
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Relation</label>
-              <select style={s.input} value={form.relation} onChange={e => setForm(f => ({ ...f, relation: e.target.value }))}>
-                {RELATIONS.map(r => <option key={r} value={r}>{RELATION_LABELS[r] || r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Treatment Type</label>
-              <select style={s.input} value={form.treatment_type} onChange={e => setForm(f => ({ ...f, treatment_type: e.target.value }))}>
-                {TREATMENTS.map(t => <option key={t} value={t}>{TREATMENT_COLORS[t]?.label || t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Notes</label>
-              <textarea style={{ ...s.input, minHeight: 60, fontFamily: 'inherit', fontSize: 13 }}
-                value={form.notes} placeholder="e.g. Diabetes patient, prefers morning doses"
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" id="active" checked={form.active}
-                onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
-              <label htmlFor="active" style={{ marginBottom: 0, cursor: 'pointer' }}>Active</label>
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button style={{ ...s.saveBtn, flex: 1, marginTop: 0 }} onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : editId ? 'Update Patient' : 'Add Patient'}
-              </button>
-              {editId && <button style={s.cancelBtn} onClick={resetForm}>Cancel</button>}
-            </div>
-          </div>
-        </div>
+        <button style={{ ...s.addBtn, marginLeft: 'auto' }} onClick={() => { setForm(emptyForm); setEditId(null); setModalOpen(true); }}>
+          + Add Patient
+        </button>
       </div>
+
+      {list.length === 0 && <div style={s.empty}>No patients yet. Add your first patient above.</div>}
+      {list.map(patient => {
+        const treatmentStyle = TREATMENT_COLORS[patient.treatment_type] || TREATMENT_COLORS.other;
+        return (
+          <div
+            key={patient.id}
+            onClick={() => setSelectedPatient(patient)}
+            style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 6, cursor: 'pointer' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{patient.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{RELATION_LABELS[patient.relation] || patient.relation}</div>
+              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                backgroundColor: treatmentStyle.bg, color: treatmentStyle.color,
+                border: `1px solid ${treatmentStyle.color}20`,
+              }}>
+                {treatmentStyle.label}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+              <span>Medicines: <strong style={{ color: 'var(--text)' }}>{patient.medicine_count}</strong></span>
+              <span>{patient.active ? '✓ Active' : '✗ Inactive'}</span>
+            </div>
+            {patient.notes && (
+              <div style={{ fontSize: 12, color: 'var(--text-faint)', fontStyle: 'italic' }}>"{patient.notes}"</div>
+            )}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button style={{ ...s.saveSmBtn, fontSize: 12 }} onClick={(e) => { e.stopPropagation(); setSelectedPatient(patient); }}>
+                📋 View History
+              </button>
+              <button style={{ ...s.iconBtn }} onClick={(e) => startEdit(patient, e)}>📝 Edit</button>
+              <button style={{ ...s.iconBtn, color: '#dc2626' }} onClick={(e) => handleDelete(patient.id, e)}>🗑</button>
+            </div>
+          </div>
+        );
+      })}
+
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Patient' : 'Add Patient'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update Patient' : 'Add Patient'} saving={saving}>
+        <div className="form-grid">
+          <label>Name *<input style={s.input} value={form.name} placeholder="e.g. Mom" onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></label>
+          <label>
+            Relation
+            <select style={s.input} value={form.relation} onChange={e => setForm(f => ({ ...f, relation: e.target.value }))}>
+              {RELATIONS.map(r => <option key={r} value={r}>{RELATION_LABELS[r] || r}</option>)}
+            </select>
+          </label>
+          <label>
+            Treatment Type
+            <select style={s.input} value={form.treatment_type} onChange={e => setForm(f => ({ ...f, treatment_type: e.target.value }))}>
+              {TREATMENTS.map(t => <option key={t} value={t}>{TREATMENT_COLORS[t]?.label || t}</option>)}
+            </select>
+          </label>
+          <label>Notes<textarea style={{ ...s.input, minHeight: 60, fontFamily: 'inherit', resize: 'vertical' }} value={form.notes} placeholder="e.g. Diabetes patient, prefers morning doses" onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></label>
+          <label style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <input type="checkbox" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} style={{ width: 18, height: 18, minHeight: 'unset' }} />
+            Active
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

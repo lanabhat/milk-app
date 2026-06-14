@@ -9,6 +9,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { API, getAuthHeaders } from '../../utils/api';
 import { ITEM_META, CATEGORY_META } from '../../constants/itemMeta';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const CATEGORIES = [
   { value: 'milk',      label: 'Milk & Dairy' },
@@ -54,7 +55,6 @@ function SortableRow({ item, arrangeMode, onToggleVisible, onStartEdit }) {
 
   return (
     <div ref={setNodeRef} style={style}>
-      {/* Drag handle — only visible in arrange mode */}
       {arrangeMode && (
         <div {...attributes} {...listeners}
           style={{ cursor: 'grab', color: '#94a3b8', fontSize: 18, flexShrink: 0, touchAction: 'none', userSelect: 'none', padding: '0 4px' }}>
@@ -87,24 +87,21 @@ function SortableRow({ item, arrangeMode, onToggleVisible, onStartEdit }) {
 const EMPTY_FORM = { name: '', price: '', unit: '', category: 'milk' };
 
 export default function CatalogTab({ items, showToast, onSaved }) {
-  const [localItems, setLocalItems] = useState([]);
+  const [localItems, setLocalItems]   = useState([]);
   const [arrangeMode, setArrangeMode] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
-  const [addForm, setAddForm] = useState(EMPTY_FORM);
-  const [addSaving, setAddSaving] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(EMPTY_FORM);
-  const [editSaving, setEditSaving] = useState(false);
+  const [modalOpen, setModalOpen]     = useState(false);
+  const [showHidden, setShowHidden]   = useState(false);
+  const [addForm, setAddForm]         = useState(EMPTY_FORM);
+  const [addSaving, setAddSaving]     = useState(false);
+  const [editingId, setEditingId]     = useState(null);
+  const [editForm, setEditForm]       = useState(EMPTY_FORM);
+  const [editSaving, setEditSaving]   = useState(false);
 
-  useEffect(() => {
-    setLocalItems(items);
-  }, [items]);
+  useEffect(() => { setLocalItems(items); }, [items]);
 
   const visibleItems = localItems.filter(i => i.visible !== false);
   const hiddenItems  = localItems.filter(i => i.visible === false);
 
-  // Only activate sensors when arrange mode is on
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: arrangeMode ? { distance: 5 } : { distance: Infinity },
@@ -139,7 +136,6 @@ export default function CatalogTab({ items, showToast, onSaved }) {
   const handleToggleVisible = async (item) => {
     const headers = getAuthHeaders();
     if (!headers) return;
-    // Optimistic update
     setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, visible: !i.visible } : i));
     try {
       const res = await fetch(`${API}/api/items/${item.id}/`, {
@@ -155,8 +151,7 @@ export default function CatalogTab({ items, showToast, onSaved }) {
     }
   };
 
-  const handleAddSubmit = async (e) => {
-    e.preventDefault();
+  const handleAddSave = async () => {
     if (!addForm.name.trim() || !addForm.price || !addForm.unit.trim()) {
       showToast('Fill in all fields', 'error'); return;
     }
@@ -168,18 +163,11 @@ export default function CatalogTab({ items, showToast, onSaved }) {
       const res = await fetch(`${API}/api/items/`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: addForm.name.trim(),
-          price: parseFloat(addForm.price),
-          unit: addForm.unit.trim(),
-          category: addForm.category,
-          visible: true,
-          position: maxPos + 1,
-        }),
+        body: JSON.stringify({ name: addForm.name.trim(), price: parseFloat(addForm.price), unit: addForm.unit.trim(), category: addForm.category, visible: true, position: maxPos + 1 }),
       });
       if (!res.ok) throw new Error();
       setAddForm(EMPTY_FORM);
-      setShowAddForm(false);
+      setModalOpen(false);
       showToast('✓ Product added');
       onSaved();
     } catch {
@@ -206,12 +194,7 @@ export default function CatalogTab({ items, showToast, onSaved }) {
       const res = await fetch(`${API}/api/items/${item.id}/`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editForm.name.trim(),
-          price: parseFloat(editForm.price),
-          unit: editForm.unit.trim(),
-          category: editForm.category,
-        }),
+        body: JSON.stringify({ name: editForm.name.trim(), price: parseFloat(editForm.price), unit: editForm.unit.trim(), category: editForm.category }),
       });
       if (!res.ok) throw new Error();
       setEditingId(null);
@@ -224,15 +207,36 @@ export default function CatalogTab({ items, showToast, onSaved }) {
     }
   };
 
+  const InlineEditForm = ({ item }) => (
+    <form onSubmit={e => handleEditSubmit(e, item)} style={{ ...s.card, marginBottom: 6, borderLeft: '4px solid #1d4ed8' }}>
+      <div className="form-grid">
+        <label>Name<input style={s.input} value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} /></label>
+        <label>Price (₹)<input style={s.input} type="number" min="0" step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))} /></label>
+        <label>Unit<input style={s.input} value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))} /></label>
+        <label>
+          Category
+          <select style={s.input} value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}>
+            {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button type="submit" disabled={editSaving} style={{ ...s.primaryBtn, flex: 1 }}>
+          {editSaving ? 'Saving…' : '✓ Save'}
+        </button>
+        <button type="button" onClick={() => setEditingId(null)} style={{ ...s.primaryBtn, backgroundColor: '#64748b' }}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+
   return (
     <div style={s.section}>
-      {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <h3 style={{ ...s.sectionTitle, margin: 0, flex: 1 }}>Product Catalog</h3>
-        <button
-          onClick={() => { setShowAddForm(v => !v); setEditingId(null); }}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showAddForm ? '#64748b' : '#1d4ed8' }}>
-          {showAddForm ? '✕ Cancel' : '+ Add Product'}
+        <button onClick={() => { setAddForm(EMPTY_FORM); setModalOpen(true); setEditingId(null); }} style={s.addBtn}>
+          + Add Product
         </button>
         <button
           onClick={() => setArrangeMode(v => !v)}
@@ -242,44 +246,12 @@ export default function CatalogTab({ items, showToast, onSaved }) {
         </button>
       </div>
 
-      {/* Add product form */}
-      {showAddForm && (
-        <form onSubmit={handleAddSubmit} style={{ ...s.card, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: '#1e293b' }}>New Product</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={s.fieldLabel}>Product Name</label>
-              <input style={s.input} value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Nandini Toned Milk 1L" />
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Price (₹)</label>
-              <input style={s.input} type="number" min="0" step="0.01" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: e.target.value }))} placeholder="28" />
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Unit</label>
-              <input style={s.input} value={addForm.unit} onChange={e => setAddForm(f => ({ ...f, unit: e.target.value }))} placeholder="litre / piece / unit" />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={s.fieldLabel}>Category</label>
-              <select style={s.input} value={addForm.category} onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}>
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <button type="submit" disabled={addSaving} style={{ ...s.primaryBtn, width: '100%' }}>
-            {addSaving ? 'Adding…' : '✓ Add Product'}
-          </button>
-        </form>
-      )}
-
-      {/* Arrange mode banner */}
       {arrangeMode && (
         <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#92400e', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
           ↕ Drag the ⠿ handle to reorder items. Tap <strong>Arrange</strong> again to lock.
         </div>
       )}
 
-      {/* Visible items — drag-and-drop sortable */}
       <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
         Visible in catalog ({visibleItems.length})
       </div>
@@ -290,53 +262,12 @@ export default function CatalogTab({ items, showToast, onSaved }) {
         <SortableContext items={visibleItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
           {visibleItems.map(item => (
             editingId === item.id
-              ? (
-                <form key={item.id} onSubmit={e => handleEditSubmit(e, item)}
-                  style={{ ...s.card, marginBottom: 6, borderLeft: '4px solid #1d4ed8' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={s.fieldLabel}>Name</label>
-                      <input style={s.input} value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label style={s.fieldLabel}>Price (₹)</label>
-                      <input style={s.input} type="number" min="0" step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label style={s.fieldLabel}>Unit</label>
-                      <input style={s.input} value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))} />
-                    </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={s.fieldLabel}>Category</label>
-                      <select style={s.input} value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}>
-                        {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="submit" disabled={editSaving} style={{ ...s.primaryBtn, flex: 1 }}>
-                      {editSaving ? 'Saving…' : '✓ Save'}
-                    </button>
-                    <button type="button" onClick={() => setEditingId(null)} style={{ ...s.primaryBtn, backgroundColor: '#64748b' }}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              )
-              : (
-                <SortableRow
-                  key={item.id}
-                  item={item}
-                  arrangeMode={arrangeMode}
-                  onToggleVisible={handleToggleVisible}
-                  onStartEdit={handleStartEdit}
-                />
-              )
+              ? <InlineEditForm key={item.id} item={item} />
+              : <SortableRow key={item.id} item={item} arrangeMode={arrangeMode} onToggleVisible={handleToggleVisible} onStartEdit={handleStartEdit} />
           ))}
         </SortableContext>
       </DndContext>
 
-      {/* Hidden products */}
       {hiddenItems.length > 0 && (
         <div style={{ marginTop: 16 }}>
           <button
@@ -345,41 +276,7 @@ export default function CatalogTab({ items, showToast, onSaved }) {
             {showHidden ? '▾' : '▸'} Hidden products ({hiddenItems.length}) — tap to {showHidden ? 'collapse' : 'expand'}
           </button>
           {showHidden && hiddenItems.map(item => {
-            if (editingId === item.id) {
-              return (
-                <form key={item.id} onSubmit={e => handleEditSubmit(e, item)}
-                  style={{ ...s.card, marginBottom: 6, borderLeft: '4px solid #94a3b8' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={s.fieldLabel}>Name</label>
-                      <input style={s.input} value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label style={s.fieldLabel}>Price (₹)</label>
-                      <input style={s.input} type="number" min="0" step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label style={s.fieldLabel}>Unit</label>
-                      <input style={s.input} value={editForm.unit} onChange={e => setEditForm(f => ({ ...f, unit: e.target.value }))} />
-                    </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={s.fieldLabel}>Category</label>
-                      <select style={s.input} value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}>
-                        {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="submit" disabled={editSaving} style={{ ...s.primaryBtn, flex: 1 }}>
-                      {editSaving ? 'Saving…' : '✓ Save'}
-                    </button>
-                    <button type="button" onClick={() => setEditingId(null)} style={{ ...s.primaryBtn, backgroundColor: '#64748b' }}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              );
-            }
+            if (editingId === item.id) return <InlineEditForm key={item.id} item={item} />;
             const cm = CATEGORY_META[item.category] || CATEGORY_META.other;
             return (
               <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: '4px solid #cbd5e1', borderRadius: 10, marginBottom: 6, opacity: 0.7 }}>
@@ -403,6 +300,21 @@ export default function CatalogTab({ items, showToast, onSaved }) {
           })}
         </div>
       )}
+
+      <Modal open={modalOpen} onClose={() => { setAddForm(EMPTY_FORM); setModalOpen(false); }} title="Add Product"
+        onSave={handleAddSave} saveLabel={addSaving ? 'Adding…' : 'Add Product'} saving={addSaving}>
+        <div className="form-grid">
+          <label>Product Name<input style={s.input} value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Nandini Toned Milk 1L" /></label>
+          <label>Price (₹)<input style={s.input} type="number" min="0" step="0.01" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: e.target.value }))} placeholder="28" /></label>
+          <label>Unit<input style={s.input} value={addForm.unit} onChange={e => setAddForm(f => ({ ...f, unit: e.target.value }))} placeholder="litre / piece / unit" /></label>
+          <label>
+            Category
+            <select style={s.input} value={addForm.category} onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}>
+              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

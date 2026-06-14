@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const SUGAR_TYPES = [
   { value: 'fasting',   label: 'Fasting' },
@@ -9,7 +10,6 @@ const SUGAR_TYPES = [
   { value: 'hba1c',     label: 'HbA1c' },
 ];
 
-// Normal ranges for color-coding
 function bpStatus(sys, dia) {
   if (sys > 140 || dia > 90) return 'high';
   if (sys < 90 || dia < 60) return 'low';
@@ -21,7 +21,7 @@ function pulseStatus(p) {
   return 'normal';
 }
 function sugarStatus(val, type, unit) {
-  const v = unit === 'mmol_l' ? val * 18 : val; // normalize to mg/dL
+  const v = unit === 'mmol_l' ? val * 18 : val;
   if (type === 'fasting') { if (v > 126) return 'high'; if (v < 70) return 'low'; }
   else if (type === 'post_meal') { if (v > 200) return 'high'; if (v < 70) return 'low'; }
   else { if (v > 200) return 'high'; if (v < 70) return 'low'; }
@@ -36,7 +36,6 @@ function nowLocal() {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Simple SVG line chart
 function LineChart({ data, width = 320, height = 120, color = '#2563eb', label = '' }) {
   if (!data || data.length < 2) return (
     <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -50,9 +49,9 @@ function LineChart({ data, width = 320, height = 120, color = '#2563eb', label =
   const py = (v) => height - 10 - ((v - min) / range) * (height - 20);
   const pts = data.map((d, i) => `${px(i)},${py(d.value)}`).join(' ');
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', overflowX: 'auto' }}>
       {label && <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 2 }}>{label}</div>}
-      <svg width={width} height={height} style={{ overflow: 'visible' }}>
+      <svg width={width} height={height} style={{ overflow: 'visible', minWidth: width }}>
         <polyline points={pts} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" />
         {data.map((d, i) => (
           <circle key={i} cx={px(i)} cy={py(d.value)} r={3} fill={color} />
@@ -80,9 +79,9 @@ export default function VitalsTab({ patients = [], showToast }) {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [view, setView] = useState('list'); // 'list' | 'chart'
+  const [view, setView] = useState('list');
+  const [modalOpen, setModalOpen] = useState(false);
 
-  // Set default patient
   useEffect(() => {
     if (patients.length && !selectedPatient) {
       setSelectedPatient(String(patients[0].id));
@@ -113,6 +112,7 @@ export default function VitalsTab({ patients = [], showToast }) {
   const resetForm = () => {
     setForm({ ...emptyForm(), patient: selectedPatient });
     setEditId(null);
+    setModalOpen(false);
   };
 
   const handleSave = async () => {
@@ -175,11 +175,10 @@ export default function VitalsTab({ patients = [], showToast }) {
       food_time: r.food_time || '',
       notes: r.notes || '',
     });
+    setModalOpen(true);
   };
 
   const latest = readings[0];
-
-  // Build chart data series
   const bpData = readings.filter(r => r.systolic != null).map(r => ({ value: r.systolic, label: r.recorded_at?.slice(0,10) })).reverse();
   const pulseData = readings.filter(r => r.pulse != null).map(r => ({ value: r.pulse, label: r.recorded_at?.slice(0,10) })).reverse();
   const sugarData = readings.filter(r => r.blood_sugar != null).map(r => ({ value: parseFloat(r.blood_sugar), label: r.recorded_at?.slice(0,10) })).reverse();
@@ -191,11 +190,11 @@ export default function VitalsTab({ patients = [], showToast }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {patients.map(p => (
           <button key={p.id} onClick={() => { setSelectedPatient(String(p.id)); setForm(f => ({ ...f, patient: String(p.id) })); }} style={{
-            fontSize: 13, padding: '6px 14px', borderRadius: 20, cursor: 'pointer',
+            fontSize: 13, padding: '8px 16px', borderRadius: 20, cursor: 'pointer',
             backgroundColor: selectedPatient === String(p.id) ? 'var(--primary)' : 'var(--bg-secondary)',
             color: selectedPatient === String(p.id) ? 'white' : 'var(--text)',
             border: `2px solid ${selectedPatient === String(p.id) ? 'var(--primary)' : 'var(--border)'}`,
-            fontWeight: selectedPatient === String(p.id) ? 700 : 400,
+            fontWeight: selectedPatient === String(p.id) ? 700 : 400, minHeight: 40,
           }}>👤 {p.name}</button>
         ))}
       </div>
@@ -203,7 +202,6 @@ export default function VitalsTab({ patients = [], showToast }) {
       {/* Latest + Averages snapshot */}
       {selectedPatient && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 10, marginBottom: 16 }}>
-          {/* BP */}
           {latest?.bp_display && (() => {
             const st = bpStatus(latest.systolic, latest.diastolic);
             return (
@@ -216,7 +214,6 @@ export default function VitalsTab({ patients = [], showToast }) {
             );
           })()}
 
-          {/* Pulse */}
           {latest?.pulse != null && (() => {
             const st = pulseStatus(latest.pulse);
             return (
@@ -229,7 +226,6 @@ export default function VitalsTab({ patients = [], showToast }) {
             );
           })()}
 
-          {/* Blood Sugar */}
           {latest?.blood_sugar != null && (() => {
             const st = sugarStatus(parseFloat(latest.blood_sugar), latest.sugar_type, latest.sugar_unit);
             const typeLabel = SUGAR_TYPES.find(t => t.value === latest.sugar_type)?.label || '';
@@ -251,41 +247,44 @@ export default function VitalsTab({ patients = [], showToast }) {
         </div>
       )}
 
-      <div style={s.twoPanel}>
-        {/* Left — readings list / chart */}
-        <div style={s.productsPanel}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div style={s.panelTitle}>❤️ Readings <span style={s.cartBadge}>{readings.length}</span></div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {['list', 'chart'].map(v => (
-                <button key={v} onClick={() => setView(v)} style={{
-                  fontSize: 11, padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
-                  backgroundColor: view === v ? 'var(--primary)' : 'var(--bg-secondary)',
-                  color: view === v ? 'white' : 'var(--text)',
-                  border: `1px solid ${view === v ? 'var(--primary)' : 'var(--border)'}`,
-                }}>{v === 'list' ? '📋 List' : '📈 Chart'}</button>
-              ))}
-            </div>
-          </div>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {['list', 'chart'].map(v => (
+            <button key={v} onClick={() => setView(v)} style={{
+              fontSize: 13, padding: '7px 14px', borderRadius: 8, cursor: 'pointer',
+              backgroundColor: view === v ? 'var(--primary)' : 'var(--bg-secondary)',
+              color: view === v ? 'white' : 'var(--text)',
+              border: `1px solid ${view === v ? 'var(--primary)' : 'var(--border)'}`,
+              minHeight: 40,
+            }}>{v === 'list' ? '📋 List' : '📈 Chart'}</button>
+          ))}
+        </div>
+        <button style={s.addBtn} onClick={() => { setForm({ ...emptyForm(), patient: selectedPatient }); setEditId(null); setModalOpen(true); }}>
+          + Add Reading
+        </button>
+      </div>
 
-          {loading && <div style={s.empty}>Loading…</div>}
-          {!loading && readings.length === 0 && <div style={s.empty}>No readings yet for this patient.</div>}
+      {loading && <div style={s.empty}>Loading…</div>}
+      {!loading && readings.length === 0 && <div style={s.empty}>No readings yet for this patient.</div>}
 
-          {view === 'chart' && readings.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 8 }}>
-              {bpData.length > 0 && <LineChart data={bpData} color="#ef4444" label="Systolic BP (mmHg)" />}
-              {pulseData.length > 0 && <LineChart data={pulseData} color="#3b82f6" label="Pulse (bpm)" />}
-              {sugarData.length > 0 && <LineChart data={sugarData} color="#f59e0b" label="Blood Sugar" />}
-            </div>
-          )}
+      {view === 'chart' && readings.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 8 }}>
+          {bpData.length > 0 && <LineChart data={bpData} color="#ef4444" label="Systolic BP (mmHg)" />}
+          {pulseData.length > 0 && <LineChart data={pulseData} color="#3b82f6" label="Pulse (bpm)" />}
+          {sugarData.length > 0 && <LineChart data={sugarData} color="#f59e0b" label="Blood Sugar" />}
+        </div>
+      )}
 
-          {view === 'list' && readings.map(r => {
+      {view === 'list' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {readings.map(r => {
             const bpSt = r.systolic != null ? bpStatus(r.systolic, r.diastolic) : null;
             const pSt = r.pulse != null ? pulseStatus(r.pulse) : null;
             const sSt = r.blood_sugar != null ? sugarStatus(parseFloat(r.blood_sugar), r.sugar_type, r.sugar_unit) : null;
             const dt = r.recorded_at ? new Date(r.recorded_at) : null;
             return (
-              <div key={r.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 4, marginBottom: 6 }}>
+              <div key={r.id} style={{ ...s.listRow, flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>
                     {dt ? dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
@@ -321,94 +320,89 @@ export default function VitalsTab({ patients = [], showToast }) {
             );
           })}
         </div>
+      )}
 
-        {/* Right — add form */}
-        <div style={s.cartPanel}>
-          <div style={s.panelTitle}>{editId ? '✏ Edit Reading' : '➕ Add Reading'}</div>
+      {/* Add / Edit Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={resetForm}
+        title={editId ? 'Edit Reading' : 'Add Vital Reading'}
+        onSave={handleSave}
+        saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Save Reading'}
+        saving={saving}
+      >
+        <div className="form-grid">
+          <label>
+            Patient *
+            <select style={s.input} value={form.patient}
+              onChange={e => { setForm(f => ({ ...f, patient: e.target.value })); setSelectedPatient(e.target.value); }}>
+              <option value="">— Select —</option>
+              {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div>
-              <label style={s.fieldLabel}>Patient *</label>
-              <select style={s.input} value={form.patient}
-                onChange={e => { setForm(f => ({ ...f, patient: e.target.value })); setSelectedPatient(e.target.value); }}>
-                <option value="">— Select —</option>
-                {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
+          <label>
+            Date & Time *
+            <input style={s.input} type="datetime-local" value={form.recorded_at}
+              onChange={e => setForm(f => ({ ...f, recorded_at: e.target.value }))} />
+          </label>
 
-            <div>
-              <label style={s.fieldLabel}>Date & Time *</label>
-              <input style={s.input} type="datetime-local" value={form.recorded_at}
-                onChange={e => setForm(f => ({ ...f, recorded_at: e.target.value }))} />
-            </div>
-
-            {/* BP */}
-            <div>
-              <label style={s.fieldLabel}>Blood Pressure (optional)</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <input style={s.input} type="number" placeholder="Systolic (e.g. 120)" value={form.systolic}
-                  onChange={e => setForm(f => ({ ...f, systolic: e.target.value }))} />
-                <input style={s.input} type="number" placeholder="Diastolic (e.g. 80)" value={form.diastolic}
-                  onChange={e => setForm(f => ({ ...f, diastolic: e.target.value }))} />
-              </div>
-              {form.systolic && form.diastolic && (
-                <div style={{ fontSize: 12, color: STATUS_COLOR[bpStatus(parseInt(form.systolic), parseInt(form.diastolic))], marginTop: 3 }}>
-                  BP: {form.systolic}/{form.diastolic} — {bpStatus(parseInt(form.systolic), parseInt(form.diastolic))}
-                </div>
-              )}
-            </div>
-
-            {/* Pulse */}
-            <div>
-              <label style={s.fieldLabel}>Pulse / Heart Rate (optional)</label>
-              <input style={s.input} type="number" placeholder="e.g. 72 bpm" value={form.pulse}
-                onChange={e => setForm(f => ({ ...f, pulse: e.target.value }))} />
-              {form.pulse && (
-                <div style={{ fontSize: 12, color: STATUS_COLOR[pulseStatus(parseInt(form.pulse))], marginTop: 3 }}>
-                  {form.pulse} bpm — {pulseStatus(parseInt(form.pulse))}
-                </div>
-              )}
-            </div>
-
-            {/* Blood Sugar */}
-            <div>
-              <label style={s.fieldLabel}>Blood Sugar (optional)</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 4 }}>
-                <input style={s.input} type="number" step="0.1" placeholder="Value" value={form.blood_sugar}
-                  onChange={e => setForm(f => ({ ...f, blood_sugar: e.target.value }))} />
-                <select style={s.input} value={form.sugar_unit}
-                  onChange={e => setForm(f => ({ ...f, sugar_unit: e.target.value }))}>
-                  <option value="mg_dl">mg/dL</option>
-                  <option value="mmol_l">mmol/L</option>
-                </select>
-              </div>
-              <select style={s.input} value={form.sugar_type}
-                onChange={e => setForm(f => ({ ...f, sugar_type: e.target.value }))}>
-                {SUGAR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label style={s.fieldLabel}>Food Time (when last ate)</label>
-              <input style={s.input} type="time" value={form.food_time}
-                onChange={e => setForm(f => ({ ...f, food_time: e.target.value }))} />
-            </div>
-
-            <div>
-              <label style={s.fieldLabel}>Notes</label>
-              <input style={s.input} value={form.notes} placeholder="Optional"
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-            </div>
-
+          <label>
+            Blood Pressure (optional)
             <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ ...s.saveBtn, flex: 1, marginTop: 0 }} onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : editId ? 'Update' : '💾 Save Reading'}
-              </button>
-              {editId && <button style={s.cancelBtn} onClick={resetForm}>Cancel</button>}
+              <input style={{ ...s.input, flex: 1 }} type="number" placeholder="Systolic (e.g. 120)" value={form.systolic}
+                onChange={e => setForm(f => ({ ...f, systolic: e.target.value }))} />
+              <input style={{ ...s.input, flex: 1 }} type="number" placeholder="Diastolic (e.g. 80)" value={form.diastolic}
+                onChange={e => setForm(f => ({ ...f, diastolic: e.target.value }))} />
             </div>
-          </div>
+            {form.systolic && form.diastolic && (
+              <div style={{ fontSize: 12, color: STATUS_COLOR[bpStatus(parseInt(form.systolic), parseInt(form.diastolic))], marginTop: 3 }}>
+                BP: {form.systolic}/{form.diastolic} — {bpStatus(parseInt(form.systolic), parseInt(form.diastolic))}
+              </div>
+            )}
+          </label>
+
+          <label>
+            Pulse / Heart Rate (optional)
+            <input style={s.input} type="number" placeholder="e.g. 72 bpm" value={form.pulse}
+              onChange={e => setForm(f => ({ ...f, pulse: e.target.value }))} />
+            {form.pulse && (
+              <div style={{ fontSize: 12, color: STATUS_COLOR[pulseStatus(parseInt(form.pulse))], marginTop: 3 }}>
+                {form.pulse} bpm — {pulseStatus(parseInt(form.pulse))}
+              </div>
+            )}
+          </label>
+
+          <label>
+            Blood Sugar (optional)
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <input style={{ ...s.input, flex: 1 }} type="number" step="0.1" placeholder="Value" value={form.blood_sugar}
+                onChange={e => setForm(f => ({ ...f, blood_sugar: e.target.value }))} />
+              <select style={{ ...s.input, flex: 1 }} value={form.sugar_unit}
+                onChange={e => setForm(f => ({ ...f, sugar_unit: e.target.value }))}>
+                <option value="mg_dl">mg/dL</option>
+                <option value="mmol_l">mmol/L</option>
+              </select>
+            </div>
+            <select style={s.input} value={form.sugar_type}
+              onChange={e => setForm(f => ({ ...f, sugar_type: e.target.value }))}>
+              {SUGAR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </label>
+
+          <label>
+            Food Time (when last ate)
+            <input style={s.input} type="time" value={form.food_time}
+              onChange={e => setForm(f => ({ ...f, food_time: e.target.value }))} />
+          </label>
+
+          <label>
+            Notes
+            <input style={s.input} value={form.notes} placeholder="Optional"
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </label>
         </div>
-      </div>
+      </Modal>
     </div>
   );
 }

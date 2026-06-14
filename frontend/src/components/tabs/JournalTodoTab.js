@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD, todayStr } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const PRIORITY_COLOR  = { low: '#64748b', medium: '#0369a1', high: '#f59e0b' };
 const PRIORITY_BG     = { low: '#f8fafc',  medium: '#eff6ff', high: '#fef3c7' };
@@ -24,7 +25,7 @@ function MemberPill({ m, selected, onClick }) {
 export default function JournalTodoTab({ family, vehicles, showToast, onSaved }) {
   const [todos, setTodos]           = useState([]);
   const [loading, setLoading]       = useState(false);
-  const [showForm, setShowForm]     = useState(false);
+  const [modalOpen, setModalOpen]   = useState(false);
   const [form, setForm]             = useState(EMPTY_FORM);
   const [editId, setEditId]         = useState(null);
   const [saving, setSaving]         = useState(false);
@@ -34,9 +35,8 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
   const [showExpForm, setShowExpForm] = useState({});
   const [trips, setTrips]           = useState([]);
 
-  // Filters
-  const [filterOwner, setFilterOwner]   = useState('');
-  const [filterStatus, setFilterStatus] = useState('open');
+  const [filterOwner, setFilterOwner]       = useState('');
+  const [filterStatus, setFilterStatus]     = useState('open');
   const [filterPriority, setFilterPriority] = useState('');
 
   const activeFamily = family.filter(m => m.is_active);
@@ -55,8 +55,8 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
     const headers = getAuthHeaders();
     if (!headers) return;
     const params = new URLSearchParams({ entry_type: 'todo' });
-    if (filterOwner)   params.set('owner_id', filterOwner);
-    if (filterStatus)  params.set('status', filterStatus);
+    if (filterOwner)    params.set('owner_id', filterOwner);
+    if (filterStatus)   params.set('status', filterStatus);
     if (filterPriority) params.set('priority', filterPriority);
     try {
       const r = await fetch(`${API}/api/diary-entries/?${params}`, { headers });
@@ -69,15 +69,16 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openAdd = () => { setEditId(null); setForm(EMPTY_FORM); setShowForm(true); };
+  const openAdd = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(true); };
   const openEdit = (t) => {
     setEditId(t.id);
     setForm({ title: t.title, content: t.content || '', owner: t.owner ? String(t.owner) : '', priority: t.priority, criticality: t.criticality, status: t.status, due_date: t.due_date || '', tags: t.tags || '', entry_date: t.entry_date, related_trip: t.related_trip ? String(t.related_trip) : '' });
-    setShowForm(true); setExpandId(null);
+    setModalOpen(true); setExpandId(null);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const resetForm = () => { setEditId(null); setForm(EMPTY_FORM); setModalOpen(false); };
+
+  const handleSave = async () => {
     if (!form.title.trim()) { showToast('Title required', 'error'); return; }
     setSaving(true);
     const headers = getAuthHeaders();
@@ -89,7 +90,7 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Todo added');
-      setShowForm(false); setEditId(null); fetchTodos(); onSaved();
+      resetForm(); fetchTodos(); onSaved();
     } catch { showToast('Failed to save', 'error'); }
     finally { setSaving(false); }
   };
@@ -153,7 +154,6 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
     fetchTodos();
   };
 
-  // Sort: critical+high open first, then by due date
   const sorted = [...todos].sort((a, b) => {
     const critScore = { critical: 2, normal: 1, minor: 0 };
     const priScore  = { high: 2, medium: 1, low: 0 };
@@ -202,58 +202,8 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
-        <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : openAdd}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 14px', backgroundColor: showForm ? '#64748b' : '#1d4ed8' }}>
-          {showForm ? '✕ Cancel' : '+ Add Todo'}
-        </button>
+        <button onClick={openAdd} style={s.addBtn}>+ Add Todo</button>
       </div>
-
-      {showForm && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit Todo' : 'New Todo'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Title *</label><input style={s.input} value={form.title} onChange={e => setF('title', e.target.value)} placeholder="What needs to be done?" /></div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Description</label><textarea style={{ ...s.input, height: 70 }} value={form.content} onChange={e => setF('content', e.target.value)} placeholder="Details, context, steps…" /></div>
-            <div>
-              <label style={s.fieldLabel}>Owner</label>
-              <select style={s.input} value={form.owner} onChange={e => setF('owner', e.target.value)}>
-                <option value="">— unassigned —</option>
-                {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
-              </select>
-            </div>
-            <div><label style={s.fieldLabel}>Due Date</label><input style={s.input} type="date" value={form.due_date} onChange={e => setF('due_date', e.target.value)} /></div>
-            <div>
-              <label style={s.fieldLabel}>Priority</label>
-              <select style={s.input} value={form.priority} onChange={e => setF('priority', e.target.value)}>
-                <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Criticality</label>
-              <select style={s.input} value={form.criticality} onChange={e => setF('criticality', e.target.value)}>
-                <option value="minor">Minor</option><option value="normal">Normal</option><option value="critical">Critical</option>
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Status</label>
-              <select style={s.input} value={form.status} onChange={e => setF('status', e.target.value)}>
-                <option value="open">Open</option><option value="in_progress">In Progress</option><option value="done">Done</option><option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div>
-              <label style={s.fieldLabel}>Linked Trip (optional)</label>
-              <select style={s.input} value={form.related_trip} onChange={e => setF('related_trip', e.target.value)}>
-                <option value="">— none —</option>
-                {trips.map(t => <option key={t.id} value={String(t.id)}>{t.title} ({t.trip_date})</option>)}
-              </select>
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}><label style={s.fieldLabel}>Tags (comma-separated)</label><input style={s.input} value={form.tags} onChange={e => setF('tags', e.target.value)} placeholder="home, urgent, shopping" /></div>
-          </div>
-          <button type="submit" disabled={saving} style={{ ...s.primaryBtn, width: '100%', marginTop: 10 }}>
-            {saving ? 'Saving…' : editId ? '✓ Update' : '✓ Add Todo'}
-          </button>
-        </form>
-      )}
 
       {loading && <p style={s.empty}>Loading…</p>}
       {!loading && sorted.length === 0 && <p style={s.empty}>No todos{filterStatus ? ` with status "${filterStatus}"` : ''}. Add one above.</p>}
@@ -267,7 +217,6 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
 
         return (
           <div key={todo.id} style={{ ...s.card, marginBottom: 8, borderLeft: `4px solid ${borderColor(todo)}`, background: isDone ? '#f8fafc' : 'white', opacity: isDone ? 0.75 : 1 }}>
-            {/* Header row */}
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => setExpandId(expanded ? null : todo.id)}>
               <div style={{ width: 36, height: 36, borderRadius: 8, background: isDone ? '#dcfce7' : PRIORITY_BG[todo.priority], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
                 {isDone ? '✅' : todo.criticality === 'critical' ? '🔴' : todo.priority === 'high' ? '🟡' : '⚪'}
@@ -289,14 +238,12 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
               <span style={{ color: '#94a3b8', flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
             </div>
 
-            {/* Expanded detail */}
             {expanded && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
                 {todo.content && <p style={{ fontSize: 13, color: '#475569', marginBottom: 10, lineHeight: 1.5 }}>{todo.content}</p>}
                 {todo.related_trip_title && <div style={{ fontSize: 12, color: '#7e22ce', marginBottom: 8 }}>🗺️ Trip: {todo.related_trip_title}</div>}
                 {todo.tags && <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>🏷 {todo.tags}</div>}
 
-                {/* Actions */}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                   {!isDone && <button onClick={() => handleComplete(todo.id)} style={{ ...s.primaryBtn, fontSize: 11, padding: '5px 10px', backgroundColor: '#16a34a' }}>✓ Mark Done</button>}
                   {isDone && <button onClick={() => handleReopen(todo.id)} style={{ ...s.primaryBtn, fontSize: 11, padding: '5px 10px', backgroundColor: '#0369a1' }}>↺ Reopen</button>}
@@ -304,7 +251,7 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
                   <button onClick={() => handleDelete(todo.id)} style={{ ...s.primaryBtn, fontSize: 11, padding: '5px 10px', backgroundColor: '#ef4444' }}>🗑 Delete</button>
                 </div>
 
-                {/* Notes */}
+                {/* Inline notes */}
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>Notes ({todo.notes?.length || 0})</div>
                   {todo.notes?.map(n => (
@@ -319,7 +266,7 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
                   </div>
                 </div>
 
-                {/* Expenses */}
+                {/* Inline expenses */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Expenses ({todo.expenses?.length || 0}) {todo.expense_total > 0 && `· ₹${fmt(todo.expense_total)}`}</div>
@@ -365,6 +312,52 @@ export default function JournalTodoTab({ family, vehicles, showToast, onSaved })
           </div>
         );
       })}
+
+      {/* Add / Edit Todo Modal */}
+      <Modal open={modalOpen} onClose={resetForm} title={editId ? 'Edit Todo' : 'New Todo'}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? '✓ Update' : '✓ Add Todo'} saving={saving}>
+        <div className="form-grid">
+          <label>Title *
+            <input style={s.input} value={form.title} onChange={e => setF('title', e.target.value)} placeholder="What needs to be done?" />
+          </label>
+          <label>Description
+            <textarea style={{ ...s.input, height: 70 }} value={form.content} onChange={e => setF('content', e.target.value)} placeholder="Details, context, steps…" />
+          </label>
+          <label>Owner
+            <select style={s.input} value={form.owner} onChange={e => setF('owner', e.target.value)}>
+              <option value="">— unassigned —</option>
+              {activeFamily.map(m => <option key={m.id} value={String(m.id)}>{m.avatar || '👤'} {m.name}</option>)}
+            </select>
+          </label>
+          <label>Due Date
+            <input style={s.input} type="date" value={form.due_date} onChange={e => setF('due_date', e.target.value)} />
+          </label>
+          <label>Priority
+            <select style={s.input} value={form.priority} onChange={e => setF('priority', e.target.value)}>
+              <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+            </select>
+          </label>
+          <label>Criticality
+            <select style={s.input} value={form.criticality} onChange={e => setF('criticality', e.target.value)}>
+              <option value="minor">Minor</option><option value="normal">Normal</option><option value="critical">Critical</option>
+            </select>
+          </label>
+          <label>Status
+            <select style={s.input} value={form.status} onChange={e => setF('status', e.target.value)}>
+              <option value="open">Open</option><option value="in_progress">In Progress</option><option value="done">Done</option><option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          <label>Linked Trip (optional)
+            <select style={s.input} value={form.related_trip} onChange={e => setF('related_trip', e.target.value)}>
+              <option value="">— none —</option>
+              {trips.map(t => <option key={t.id} value={String(t.id)}>{t.title} ({t.trip_date})</option>)}
+            </select>
+          </label>
+          <label>Tags (comma-separated)
+            <input style={s.input} value={form.tags} onChange={e => setF('tags', e.target.value)} placeholder="home, urgent, shopping" />
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }

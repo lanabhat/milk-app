@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { API, getAuthHeaders } from '../../utils/api';
 import { fmt, fmtD, todayStr } from '../../utils/date';
 import { styles as s } from '../../styles/dashboard';
+import Modal from '../common/Modal';
 
 const TABS_DEF = [
   {
@@ -65,12 +66,12 @@ const TABS_DEF = [
 ];
 
 export default function VehicleMaintTab({ vehicles, selectedVehicleId, showToast, onSaved }) {
-  const [maintTab, setMaintTab] = useState('oil');
-  const [data, setData]         = useState({ oil: [], tyre: [], accessories: [], parts: [] });
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState({});
-  const [editId, setEditId]     = useState(null);
-  const [saving, setSaving]     = useState(false);
+  const [maintTab, setMaintTab]   = useState('oil');
+  const [data, setData]           = useState({ oil: [], tyre: [], accessories: [], parts: [] });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm]           = useState({});
+  const [editId, setEditId]       = useState(null);
+  const [saving, setSaving]       = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!selectedVehicleId) return;
@@ -91,11 +92,11 @@ export default function VehicleMaintTab({ vehicles, selectedVehicleId, showToast
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const currentTabDef = TABS_DEF.find(t => t.id === maintTab);
 
-  const openAdd = () => { setEditId(null); setForm({ ...currentTabDef.init }); setShowForm(true); };
-  const openEdit = (rec) => { setEditId(rec.id); setForm(currentTabDef.fromRecord(rec)); setShowForm(true); };
+  const resetForm = () => { setEditId(null); setModalOpen(false); };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const openEdit = (rec) => { setEditId(rec.id); setForm(currentTabDef.fromRecord(rec)); setModalOpen(true); };
+
+  const handleSave = async () => {
     setSaving(true);
     const headers = getAuthHeaders();
     if (!headers) return;
@@ -111,7 +112,7 @@ export default function VehicleMaintTab({ vehicles, selectedVehicleId, showToast
       const res    = await fetch(url, { method, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error();
       showToast(editId ? '✓ Updated' : '✓ Saved');
-      setShowForm(false); setEditId(null); fetchData(); onSaved();
+      resetForm(); fetchData(); onSaved();
     } catch { showToast('Failed to save', 'error'); }
     finally { setSaving(false); }
   };
@@ -212,7 +213,7 @@ export default function VehicleMaintTab({ vehicles, selectedVehicleId, showToast
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, borderBottom: '2px solid #e2e8f0', paddingBottom: 8, flexWrap: 'wrap' }}>
         {TABS_DEF.map(t => (
-          <button key={t.id} onClick={() => { setMaintTab(t.id); setShowForm(false); setEditId(null); }}
+          <button key={t.id} onClick={() => { setMaintTab(t.id); setEditId(null); }}
             style={{ ...s.sessionPill, ...(maintTab === t.id ? s.sessionPillActive : {}) }}>
             {t.label}{data[t.dataKey].length > 0 && ` (${data[t.dataKey].length})`}
           </button>
@@ -220,39 +221,34 @@ export default function VehicleMaintTab({ vehicles, selectedVehicleId, showToast
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <button onClick={showForm ? () => { setShowForm(false); setEditId(null); } : openAdd}
-          style={{ ...s.primaryBtn, fontSize: 12, padding: '6px 12px', backgroundColor: showForm ? '#64748b' : '#1d4ed8' }}>
-          {showForm ? '✕ Cancel' : `+ Add ${currentTabDef?.label?.replace(/.*\s/, '')}`}
+        <button onClick={() => { setEditId(null); setForm({ ...currentTabDef.init }); setModalOpen(true); }} style={s.addBtn}>
+          + Add {currentTabDef?.label?.replace(/.*\s/, '')}
         </button>
       </div>
 
-      {showForm && currentTabDef && (
-        <form onSubmit={handleSubmit} style={{ ...s.card, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{editId ? 'Edit' : 'New'} {currentTabDef.label.replace(/.*\s/, '')} Record</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {currentTabDef.fields.map(f => (
-              <div key={f.key} style={f.type === 'textarea' ? { gridColumn: '1 / -1' } : {}}>
-                <label style={s.fieldLabel}>{f.label}</label>
-                {f.type === 'select' ? (
-                  <select style={s.input} value={form[f.key] || ''} onChange={e => setF(f.key, e.target.value)}>
-                    {(f.options || []).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                ) : f.type === 'textarea' ? (
-                  <textarea style={{ ...s.input, height: 50 }} value={form[f.key] || ''} onChange={e => setF(f.key, e.target.value)} />
-                ) : (
-                  <input style={s.input} type={f.type} step={f.step} value={form[f.key] || ''} onChange={e => setF(f.key, e.target.value)} placeholder={f.placeholder || ''} />
-                )}
-              </div>
-            ))}
-          </div>
-          <button type="submit" disabled={saving} style={{ ...s.primaryBtn, width: '100%', marginTop: 10 }}>
-            {saving ? 'Saving…' : editId ? '✓ Update' : '✓ Save'}
-          </button>
-        </form>
-      )}
-
-      {currentData.length === 0 && !showForm && <p style={s.empty}>No records yet.</p>}
+      {currentData.length === 0 && <p style={s.empty}>No records yet.</p>}
       {currentData.map(rec => renderRecord(rec))}
+
+      <Modal open={modalOpen} onClose={resetForm}
+        title={`${editId ? 'Edit' : 'New'} ${currentTabDef?.label?.replace(/.*\s/, '')} Record`}
+        onSave={handleSave} saveLabel={saving ? 'Saving…' : editId ? 'Update' : 'Save'} saving={saving}>
+        <div className="form-grid">
+          {(currentTabDef?.fields || []).map(f => (
+            <label key={f.key}>
+              {f.label}
+              {f.type === 'select' ? (
+                <select style={s.input} value={form[f.key] || ''} onChange={e => setF(f.key, e.target.value)}>
+                  {(f.options || []).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              ) : f.type === 'textarea' ? (
+                <textarea style={{ ...s.input, minHeight: 80, resize: 'vertical' }} value={form[f.key] || ''} onChange={e => setF(f.key, e.target.value)} />
+              ) : (
+                <input style={s.input} type={f.type} step={f.step} value={form[f.key] || ''} onChange={e => setF(f.key, e.target.value)} placeholder={f.placeholder || ''} />
+              )}
+            </label>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
